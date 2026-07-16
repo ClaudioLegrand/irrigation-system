@@ -5,11 +5,16 @@ import com.legrandc.irrigation_system.dtos.irrigationconfiguration.IrrigationCon
 import com.legrandc.irrigation_system.models.IrrigationConfiguration;
 import com.legrandc.irrigation_system.models.Sector;
 
+import jakarta.transaction.Transactional;
+
 import java.util.List;
 
 public interface IrrigationConfigurationService {
 
     IrrigationConfigurationResponse createConfiguration(IrrigationConfigurationRequest request);
+
+    @Transactional
+    void createConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest);
 
     IrrigationConfiguration createDefaultConfiguration(Sector sector);
 
@@ -21,5 +26,7 @@ public interface IrrigationConfigurationService {
 
     void deleteConfiguration(Long id);
     
+    List<IrrigationConfigurationResponse> getActiveConfigurationsForHardware(Long sectorId);
+
     List<IrrigationConfigurationResponse> getConfigurationsBySectorId(Long sectorId);
 }

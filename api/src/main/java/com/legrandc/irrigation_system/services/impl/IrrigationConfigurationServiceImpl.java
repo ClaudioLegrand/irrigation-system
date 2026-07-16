@@ -9,11 +9,17 @@ import com.legrandc.irrigation_system.repository.IrrigationConfigurationReposito
 import com.legrandc.irrigation_system.repository.SectorRepository;
 import com.legrandc.irrigation_system.services.IrrigationConfigurationService;
 
+import jakarta.transaction.Transactional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -81,6 +87,17 @@ public class IrrigationConfigurationServiceImpl implements IrrigationConfigurati
     }
 
     @Override
+    public List<IrrigationConfigurationResponse> getActiveConfigurationsForHardware(Long sectorId) {
+
+        findSectorOrThrow(sectorId);
+        
+        return configurationRepository.findBySectorIdAndEnabledTrue(sectorId)
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public IrrigationConfiguration createDefaultConfiguration(Sector sector) {
         IrrigationConfiguration defaultConfig = new IrrigationConfiguration();
         defaultConfig.setStartTime(LocalTime.parse("06:00"));
@@ -94,18 +111,58 @@ public class IrrigationConfigurationServiceImpl implements IrrigationConfigurati
     @Override
     public IrrigationConfigurationResponse createConfiguration(IrrigationConfigurationRequest request) {
 
-        Sector sector = sectorRepository.findById(request.getSectorId())
-                .orElseThrow(() -> new ResourceNotFoundException("Sector not found with id " + request.getSectorId()));
-
+        IrrigationConfiguration config = buildOrUpdateConfiguration(request);
         
-        IrrigationConfiguration configuration = new IrrigationConfiguration();
-        
-        configuration.setSector(sector); 
-        configuration.setStartTime(request.getStartTime());
-        configuration.setDurationMinutes(request.getDurationMinutes());
-        configuration.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
+        return toResponse(configurationRepository.save(config));
+    }
 
-        return toResponse(configurationRepository.save(configuration));
+    @Override
+    @Transactional
+    public void createConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest) {
+        
+        Map<String, IrrigationConfigurationRequest> uniqueRequests = new LinkedHashMap<>();
+        
+        for (IrrigationConfigurationRequest req : listRequest) {
+            
+            String key = req.getSectorId() + "-" + req.getStartTime();
+            uniqueRequests.put(key, req);
+        }
+
+        List<IrrigationConfiguration> configurationsToSave = new ArrayList<>();
+        
+        for (IrrigationConfigurationRequest request : uniqueRequests.values()) {
+            
+            IrrigationConfiguration config = buildOrUpdateConfiguration(request);
+            configurationsToSave.add(config);
+        }
+
+        configurationRepository.saveAll(configurationsToSave);
+    }
+
+    private IrrigationConfiguration buildOrUpdateConfiguration(IrrigationConfigurationRequest request) {
+
+        Sector sector = findSectorOrThrow(request.getSectorId());
+
+        Optional<IrrigationConfiguration> existingOpt = configurationRepository
+                .findBySectorIdAndStartTime(sector.getId(), request.getStartTime());
+
+        if (existingOpt.isPresent()) {
+            IrrigationConfiguration existingConfig = existingOpt.get();
+            existingConfig.setDurationMinutes(request.getDurationMinutes());
+            existingConfig.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
+            
+            return existingConfig;
+
+        } else {
+            IrrigationConfiguration newConfig = new IrrigationConfiguration();
+            newConfig.setSector(sector);
+            newConfig.setStartTime(request.getStartTime());
+            newConfig.setDurationMinutes(request.getDurationMinutes());
+            newConfig.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
+            
+            return newConfig;
+        }
+
     }
 
     private IrrigationConfigurationResponse toResponse(IrrigationConfiguration configuration) {

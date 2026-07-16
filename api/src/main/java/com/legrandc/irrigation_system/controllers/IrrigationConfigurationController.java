@@ -77,4 +77,13 @@ public class IrrigationConfigurationController {
 
         return ResponseEntity.ok(response);
     }
+
+    @Operation(summary = "Create multiple configurations", description = "Creates multiple new irrigation configurations from the provided list of request bodies.")
+    @PostMapping("/list")
+    public ResponseEntity<ApiResponse> createListConfiguration(@Valid @RequestBody List<IrrigationConfigurationRequest> listRequest) {
+
+        configurationService.createConfigurationsInBatch(listRequest);
+
+        return ResponseEntity.ok(new ApiResponse("Configurations successfully created"));
+    }
 }
