@@ -22,7 +22,6 @@ public class IrrigationHistory {
     @JoinColumn(name = "sector_id", nullable = false)
     private Sector sector;
 
-    @Column(nullable = false)
     private LocalDateTime startDateTime;
 
     private LocalDateTime endDateTime;
@@ -30,4 +29,5 @@ public class IrrigationHistory {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OriginOrder originOrder;
+    
 }

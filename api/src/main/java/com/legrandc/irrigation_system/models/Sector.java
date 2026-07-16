@@ -5,8 +5,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "sectors")
@@ -27,13 +31,17 @@ public class Sector {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private SectorState currentState = SectorState.INACTIVE;
+    private SectorState currentState;
 
     @OneToMany(mappedBy = "sector", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<IrrigationConfiguration> configurations = new ArrayList<>();
 
     @OneToMany(mappedBy = "sector", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<IrrigationHistory> history = new ArrayList<>();
+
+    @Column(updatable = false)
+    @CreationTimestamp
+    private LocalDateTime createdAt;
 
     public void addConfiguration(IrrigationConfiguration configuration) {
         configurations.add(configuration);

@@ -2,6 +2,9 @@ package com.legrandc.irrigation_system.models;
 
 import jakarta.persistence.*;
 import java.time.LocalTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,11 +26,12 @@ public class IrrigationConfiguration {
     private Sector sector;
 
     @Column(nullable = false)
+    @JsonFormat(pattern = "HH:mm")
     private LocalTime startTime;
 
     @Column(nullable = false)
     private Integer durationMinutes;
 
     @Column(nullable = false)
-    private Boolean enabled = true;
+    private Boolean enabled;
 }
