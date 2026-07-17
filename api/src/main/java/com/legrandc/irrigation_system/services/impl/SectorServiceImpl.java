@@ -2,6 +2,7 @@ package com.legrandc.irrigation_system.services.impl;
 
 import com.legrandc.irrigation_system.dtos.sector.SectorRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorResponse;
+import com.legrandc.irrigation_system.dtos.sector.SectorStateRequest;
 import com.legrandc.irrigation_system.exceptions.ResourceNotFoundException;
 import com.legrandc.irrigation_system.models.IrrigationConfiguration;
 import com.legrandc.irrigation_system.models.Sector;
@@ -9,6 +10,8 @@ import com.legrandc.irrigation_system.models.SectorState;
 import com.legrandc.irrigation_system.repository.SectorRepository;
 import com.legrandc.irrigation_system.services.IrrigationConfigurationService;
 import com.legrandc.irrigation_system.services.SectorService;
+
+import jakarta.transaction.Transactional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -76,6 +79,33 @@ public class SectorServiceImpl implements SectorService {
         }
 
         return response;
+    }
+
+    @Override
+    @Transactional
+    public SectorResponse changeState(Long id, SectorStateRequest request) {
+        
+        Sector sector = sectorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Sector not found with id " + id));
+
+        if (sector.getCurrentState() == request.getState()) {
+            return toResponse(sector);
+        }
+
+        sector.setCurrentState(request.getState());
+        Sector updatedSector = sectorRepository.save(sector);
+
+        sendSignalToHardware(sector.getId(), request.getState());
+
+        return toResponse(updatedSector);
+    }
+
+    // TODO: Implement the actual hardware communication logic in the sendSignalToHardware method. For now, it just prints a message to the console.
+
+    private void sendSignalToHardware(Long sectorId, SectorState state) {
+        
+        System.out.println(">>> SEÑAL WIFI ENVIADA AL HARDWARE:");
+        System.out.println(">>> Sector ID: " + sectorId + " | Comando: " + state.name());
     }
 
     private Sector findSectorOrThrow(Long id) {

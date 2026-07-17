@@ -2,6 +2,7 @@ package com.legrandc.irrigation_system.services;
 
 import com.legrandc.irrigation_system.dtos.sector.SectorRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorResponse;
+import com.legrandc.irrigation_system.dtos.sector.SectorStateRequest;
 
 import java.util.List;
 
@@ -16,4 +17,6 @@ public interface SectorService {
     SectorResponse updateSector(Long id, SectorRequest request);
     
     void deleteSector(Long id);
+
+    SectorResponse changeState(Long id, SectorStateRequest request);
 }
