@@ -11,6 +11,13 @@ import com.legrandc.irrigation_system.repository.SectorRepository;
 import com.legrandc.irrigation_system.services.IrrigationConfigurationService;
 import com.legrandc.irrigation_system.services.SectorService;
 
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Value;
+
 import jakarta.transaction.Transactional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,17 +102,43 @@ public class SectorServiceImpl implements SectorService {
         sector.setCurrentState(request.getState());
         Sector updatedSector = sectorRepository.save(sector);
 
-        sendSignalToHardware(sector.getId(), request.getState());
+        sendSignalToHardware(sector, request.getState());
 
         return toResponse(updatedSector);
     }
 
     // TODO: Implement the actual hardware communication logic in the sendSignalToHardware method. For now, it just prints a message to the console.
 
-    private void sendSignalToHardware(Long sectorId, SectorState state) {
+    // Spring Boot lee la IP automáticamente de tu application.properties
+    @Value("${hardware.device.ip}")
+    private String hardwareIp;
+
+    private void sendSignalToHardware(Sector sector, SectorState state) {
         
-        System.out.println(">>> SEÑAL WIFI ENVIADA AL HARDWARE:");
-        System.out.println(">>> Sector ID: " + sectorId + " | Comando: " + state.name());
+        String hardwareUrl = "http://" + hardwareIp + "/api/action";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        String jsonBody = String.format("{\"sectorId\": %d, \"state\": \"%s\"}", 
+                                        sector.getId(), state.name());
+        
+        HttpEntity<String> requestEntity = new HttpEntity<>(jsonBody, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        try {
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                                                hardwareUrl, requestEntity, String.class);
+            
+            System.out.println("Hardware respondió con estado: " + response.getStatusCode());
+            
+        } catch (Exception e) {
+            
+            System.err.println("Error: No se pudo contactar al hardware en la IP: " + hardwareIp);
+            throw new RuntimeException("El dispositivo central no responde. Verifique su conexión.");
+        }
     }
 
     private Sector findSectorOrThrow(Long id) {
