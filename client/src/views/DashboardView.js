@@ -3,23 +3,30 @@ import React from 'react';
 export default function DashboardView({ appData, setCurrentView }) {
   const { isActive, handleToggleMain, sectors, configurations, history } = appData;
   
-  // Datos para los resúmenes
-  const activeSectorsCount = sectors.filter(s => s.currentState === 'ACTIVE').length;
-  const nextConfig = configurations.length > 0 ? configurations[0] : null;
-  const lastHistory = history.length > 0 ? history[0] : null;
+  // Lógica inteligente para saber QUÉ se está regando
+  const activeSectors = sectors.filter(s => s.currentState === 'ACTIVE');
+  const activeCount = activeSectors.length;
+  
+  let heroSubtext = 'Riego en espera';
+  if (isActive) {
+    if (activeCount === 1) heroSubtext = `Regando: ${activeSectors[0].name}`;
+    else if (activeCount > 1) heroSubtext = `Regando: ${activeCount} sectores`;
+    else heroSubtext = 'Encendido manualmente';
+  }
 
-  // Manejo seguro del objeto LocalTime del Backend
   const formatTime = (timeObj) => {
     if (!timeObj) return '--:--';
-    if (typeof timeObj === 'string') return timeObj; // Por si viene como string "06:00"
+    if (typeof timeObj === 'string') return timeObj;
     const h = String(timeObj.hour).padStart(2, '0');
     const m = String(timeObj.minute).padStart(2, '0');
     return `${h}:${m}`;
   };
 
+  const nextConfig = configurations.length > 0 ? configurations[0] : null;
+  const lastHistory = history.length > 0 ? history[0] : null;
+
   return (
     <div>
-      {/* Botón Héroe Interactivo */}
       <button 
         className={`hero-button ${isActive ? 'active' : 'inactive'}`}
         onClick={handleToggleMain}
@@ -27,31 +34,44 @@ export default function DashboardView({ appData, setCurrentView }) {
         {isActive ? (
           <>
             <span style={{ fontSize: '3.5rem', marginBottom: '10px' }}>💧</span>
-            <span>APAGAR RIEGO</span>
-            <p>{activeSectorsCount} sector(es) activo(s)</p>
+            <span>APAGAR</span>
+            <p>{heroSubtext}</p>
           </>
         ) : (
           <>
             <span style={{ fontSize: '3.5rem', marginBottom: '10px', filter: 'grayscale(1)' }}>🌱</span>
-            <span>ENCENDER RIEGO</span>
+            <span>ENCENDER</span>
             <p>Iniciar manualmente</p>
           </>
         )}
       </button>
 
-      {/* Tarjetas Inteligentes (Accesos rápidos) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
         
-        <div className="glass-panel" style={{ cursor: 'pointer', padding: '16px' }} onClick={() => setCurrentView('config')}>
-          <p className="eyebrow">Próximo Riego</p>
+        {/* Tarjeta Camaleón: Cambia si está regando */}
+        <div 
+          className="glass-panel" 
+          style={{ 
+            cursor: 'pointer', padding: '16px',
+            borderColor: isActive ? 'var(--primary)' : 'var(--surface-border)',
+            background: isActive ? 'rgba(16, 185, 129, 0.05)' : 'var(--surface)'
+          }} 
+          onClick={() => setCurrentView('config')}
+        >
+          <p className="eyebrow" style={{ color: isActive ? 'var(--primary)' : 'var(--accent)' }}>
+            {isActive ? 'En Proceso' : 'Próximo Riego'}
+          </p>
           <h3 style={{ fontSize: '1.2rem', marginTop: '4px' }}>
-            {nextConfig ? formatTime(nextConfig.startTime) : 'Sin programar'}
+            {isActive && activeCount > 0 
+              ? (activeCount === 1 ? activeSectors[0].name : `${activeCount} activos`) 
+              : (nextConfig ? formatTime(nextConfig.startTime) : 'Sin programar')}
           </h3>
           <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>
-            {nextConfig ? `${nextConfig.durationMinutes} min` : 'Toca para ajustar'}
+            {isActive ? 'Riego activo' : (nextConfig ? `${nextConfig.durationMinutes} min` : 'Toca para ajustar')}
           </p>
         </div>
 
+        {/* Tarjeta de Historial */}
         <div className="glass-panel" style={{ cursor: 'pointer', padding: '16px' }} onClick={() => setCurrentView('history')}>
           <p className="eyebrow">Último Evento</p>
           <h3 style={{ fontSize: '1rem', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
