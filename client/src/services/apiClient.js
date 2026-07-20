@@ -14,7 +14,7 @@ async function request(path, options = {}) {
     throw new Error(errorText || 'La solicitud falló');
   }
 
-  const contentType = response.headers.get('content-type') || '';
+  const contentType = response.headers?.get?.('content-type') || '';
   if (contentType.includes('application/json')) {
     return response.json();
   }

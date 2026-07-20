@@ -5,6 +5,9 @@ beforeEach(() => {
   global.fetch = jest.fn((url) =>
     Promise.resolve({
       ok: true,
+      headers: {
+        get: () => 'application/json',
+      },
       json: async () => {
         if (url.includes('/sectors')) return [];
         if (url.includes('/configurations')) return [];
@@ -28,4 +31,11 @@ test('renders the irrigation dashboard title', () => {
 test('shows onboarding for first-time setup when no sectors exist', async () => {
   render(<App />);
   expect(await screen.findByText(/crea tu primer sector/i)).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: /configuración/i })).toBeInTheDocument();
+});
+
+test('hides the main irrigation toggle when no sectors exist', async () => {
+  render(<App />);
+  expect(await screen.findByText(/crea tu primer sector/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /encender riego|apagar riego/i })).not.toBeInTheDocument();
 });

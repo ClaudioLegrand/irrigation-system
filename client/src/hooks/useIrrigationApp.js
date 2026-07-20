@@ -15,6 +15,11 @@ export function useIrrigationApp() {
     description: '',
     defaultConfiguration: true,
   });
+  const [newConfiguration, setNewConfiguration] = useState({
+    startTime: '06:00',
+    durationMinutes: 15,
+    enabled: true,
+  });
 
   const loadData = useCallback(async () => {
     try {
@@ -73,35 +78,54 @@ export function useIrrigationApp() {
     }
   }, []);
 
-  const handleCreateSector = useCallback(async (event) => {
+  const handleCreateSector = useCallback(async (event, options = {}) => {
     event.preventDefault();
 
     const name = newSector.name.trim();
     if (!name) {
       setMessage('Ingresa un nombre para crear el sector');
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
       return;
     }
+
+    const shouldCreateDefaultConfiguration = options.defaultConfiguration ?? Boolean(newSector.defaultConfiguration);
+    const shouldCreateManualConfiguration = Boolean(options.createConfiguration);
 
     try {
       const created = await createSector({
         name,
         description: newSector.description.trim(),
         currentState: 'INACTIVE',
-        defaultConfiguration: Boolean(newSector.defaultConfiguration),
+        defaultConfiguration: shouldCreateDefaultConfiguration,
       });
 
       setSectors((prev) => [created, ...prev]);
       setNewSector({ name: '', description: '', defaultConfiguration: true });
+
+      if (shouldCreateManualConfiguration) {
+        const createdConfiguration = await createConfiguration({
+          sectorId: created.id,
+          startTime: newConfiguration.startTime,
+          durationMinutes: Number(newConfiguration.durationMinutes),
+          enabled: Boolean(newConfiguration.enabled),
+        });
+        setConfigurations((prev) => [createdConfiguration, ...prev]);
+      }
+
       setMessage(
-        newSector.defaultConfiguration
-          ? 'Sector creado y configuración predeterminada activada'
-          : 'Sector creado correctamente'
+        shouldCreateManualConfiguration
+          ? 'Sector creado y configuración guardada'
+          : shouldCreateDefaultConfiguration
+            ? 'Sector creado y configuración predeterminada activada'
+            : 'Sector creado correctamente'
       );
       await loadData();
     } catch (error) {
       setMessage(error.message || 'No se pudo crear el sector');
     }
-  }, [loadData, newSector]);
+  }, [loadData, newConfiguration, newSector]);
 
   const handleSaveConfiguration = useCallback(async (payload) => {
     try {
@@ -123,13 +147,15 @@ export function useIrrigationApp() {
       message,
       newSector,
       setNewSector,
+      newConfiguration,
+      setNewConfiguration,
       loadData,
       handleToggleMain,
       handleToggleSector,
       handleCreateSector,
       handleSaveConfiguration,
     }),
-    [configurations, handleCreateSector, handleSaveConfiguration, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newSector, sectors]
+    [configurations, handleCreateSector, handleSaveConfiguration, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors]
   );
 
   return value;
