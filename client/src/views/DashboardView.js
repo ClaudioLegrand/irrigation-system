@@ -7,11 +7,18 @@ export default function DashboardView({ appData, setCurrentView }) {
   const activeSectors = sectors.filter(s => s.currentState === 'ACTIVE');
   const activeCount = activeSectors.length;
   
-  let heroSubtext = 'Riego en espera';
+  let heroSubtext = '';
+  
   if (isActive) {
-    if (activeCount === 1) heroSubtext = `Regando: ${activeSectors[0].name}`;
-    else if (activeCount > 1) heroSubtext = `Regando: ${activeCount} sectores`;
-    else heroSubtext = 'Encendido manualmente';
+    // Si el botón está presionado (REGANDO)
+    if (activeCount === 0) heroSubtext = 'Ningún sector habilitado';
+    else if (activeCount === 1) heroSubtext = `Regando: ${activeSectors[0].name}`;
+    else heroSubtext = `Regando: ${activeCount} zonas`;
+  } else {
+    // Si el botón está apagado (EN ESPERA)
+    if (activeCount === 0) heroSubtext = 'Sin sectores habilitados';
+    else if (activeCount === 1) heroSubtext = '1 zona lista para regar';
+    else heroSubtext = `${activeCount} zonas listas`;
   }
 
   const formatTime = (timeObj) => {

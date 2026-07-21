@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createConfiguration, getConfigurations } from '../services/configurationService';
 import { createSector, getSectors, updateSector } from '../services/sectorService';
 import { getHistory } from '../services/historyService';
+import { createConfiguration, getConfigurations, updateConfiguration, deleteConfiguration } from '../services/configurationService';
 
 export function useIrrigationApp() {
   const [sectors, setSectors] = useState([]);
@@ -32,7 +32,7 @@ export function useIrrigationApp() {
       setSectors(sectorData);
       setConfigurations(configData);
       setHistory(historyData);
-      setIsActive(sectorData.some((sector) => sector.currentState === 'ACTIVE'));
+      // ELIMINAMOS la línea que encendía el botón maestro basándose en los sectores
     } catch (error) {
       setMessage(error.message || 'No se pudo cargar la información');
     } finally {
@@ -47,21 +47,12 @@ export function useIrrigationApp() {
   const handleToggleMain = useCallback(async () => {
     const nextState = !isActive;
     setIsActive(nextState);
-    setMessage(nextState ? 'Riego activado' : 'Riego detenido');
+    // Cambiamos el mensaje para que quede claro que es una acción manual
+    setMessage(nextState ? 'Riego manual iniciado' : 'Riego manual detenido');
 
-    try {
-      await Promise.all(
-        sectors.map((sector) =>
-          updateSector(sector.id, {
-            ...sector,
-            currentState: nextState ? 'ACTIVE' : 'INACTIVE',
-          })
-        )
-      );
-    } catch (error) {
-      setMessage(error.message || 'No se pudo actualizar el estado');
-    }
-  }, [isActive, sectors]);
+    // ELIMINAMOS el bloque de código que modificaba todos los sectores.
+    // El hardware ahora sabrá que debe regar los que ya están habilitados.
+  }, [isActive]);
 
   const handleToggleSector = useCallback(async (sector) => {
     const nextState = sector.currentState === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
@@ -71,8 +62,9 @@ export function useIrrigationApp() {
         currentState: nextState,
         defaultConfiguration: false,
       });
+      
       setSectors((prev) => prev.map((item) => (item.id === sector.id ? updated : item)));
-      setMessage(`Sector ${sector.name} ${nextState === 'ACTIVE' ? 'activado' : 'apagado'}`);
+      // ELIMINAMOS la línea que encendía el botón al habilitar un sector
     } catch (error) {
       setMessage(error.message || 'No se pudo cambiar el estado del sector');
     }
@@ -137,6 +129,29 @@ export function useIrrigationApp() {
     }
   }, []);
 
+  const handleToggleConfiguration = useCallback(async (config) => {
+    try {
+      const updated = await updateConfiguration(config.id, {
+        ...config,
+        enabled: !config.enabled
+      });
+      // Actualiza en tiempo real
+      setConfigurations((prev) => prev.map((item) => (item.id === config.id ? updated : item)));
+    } catch (error) {
+      setMessage(error.message || 'No se pudo actualizar la rutina');
+    }
+  }, []);
+
+  const handleDeleteConfiguration = useCallback(async (id) => {
+    try {
+      await deleteConfiguration(id);
+      // Lo quitamos visualmente de la lista
+      setConfigurations((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      setMessage(error.message || 'No se pudo eliminar la rutina');
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       sectors,
@@ -154,6 +169,8 @@ export function useIrrigationApp() {
       handleToggleSector,
       handleCreateSector,
       handleSaveConfiguration,
+      handleToggleConfiguration,
+      handleDeleteConfiguration,
     }),
     [configurations, handleCreateSector, handleSaveConfiguration, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors]
   );

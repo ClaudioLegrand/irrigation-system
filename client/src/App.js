@@ -5,7 +5,6 @@ import { useIrrigationApp } from './hooks/useIrrigationApp';
 import AppHeader from './components/ui/AppHeader';
 import MagicDock from './components/layout/MagicDock';
 
-// Importaremos las vistas en el próximo paso
 import OnboardingView from './views/OnboardingView';
 import DashboardView from './views/DashboardView';
 import ConfigView from './views/ConfigView';
@@ -15,19 +14,26 @@ function App() {
   const appData = useIrrigationApp();
   const { sectors, loading } = appData;
   
-  // Estado para saber en qué pantalla estamos ('dashboard', 'config', 'history')
   const [currentView, setCurrentView] = useState('dashboard');
 
-  // === Lógica de Gestos (Swipe) ===
+  // === Lógica de Gestos (Swipe) Mejorada ===
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
   const minSwipeDistance = 50;
 
   const onTouchStart = (e) => {
+    // 🛠️ FIX GESTOS: Si estás tocando las pestañas deslizables, ignoramos el swipe de página
+    const isTouchInScrollableArea = e.target.closest('.tabs-container');
+    if (isTouchInScrollableArea) return;
+
     setTouchEnd(null);
     setTouchStart(e.targetTouches[0].clientX);
   };
-  const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
+  
+  const onTouchMove = (e) => {
+    if (!touchStart) return; // Si se canceló el inicio, no hacemos nada
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
   
   const onTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
@@ -35,7 +41,6 @@ function App() {
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
 
-    // Navegación tipo carrusel: Config <- Dashboard -> History
     if (isLeftSwipe) {
       if (currentView === 'config') setCurrentView('dashboard');
       else if (currentView === 'dashboard') setCurrentView('history');
@@ -44,24 +49,30 @@ function App() {
       if (currentView === 'history') setCurrentView('dashboard');
       else if (currentView === 'dashboard') setCurrentView('config');
     }
+    
+    // Reseteamos
+    setTouchStart(null);
+    setTouchEnd(null);
   };
 
-  // === Renderizado Condicional Inteligente ===
+  // === Renderizado ===
   if (loading) {
     return <div className="app-container"><p>Cargando sistema...</p></div>;
   }
 
-  // Si no hay sectores, forzamos la vista de Onboarding (Estado Vacío)
   if (sectors.length === 0) {
     return (
       <div className="app-container">
-        <AppHeader title="Bienvenido" subtitle="Iniciemos la configuración" status="Espera" />
+        <AppHeader 
+          title="Bienvenido" 
+          subtitle="Iniciemos la configuración" 
+          sectors={[]} 
+        />
         <OnboardingView appData={appData} />
       </div>
     );
   }
 
-  // Renderizador dinámico de la vista actual
   const renderView = () => {
     switch (currentView) {
       case 'config': return <ConfigView appData={appData} />;
@@ -80,18 +91,14 @@ function App() {
       onTouchEnd={onTouchEnd}
     >
       <AppHeader 
-        title={currentView === 'dashboard' ? 'Sistema de riego' : currentView === 'config' ? 'Ajustes' : 'Registro'} 
+        title={currentView === 'dashboard' ? 'Sistema de riego' : currentView === 'config' ? 'Zonas y Rutinas' : 'Registro'} 
         subtitle={currentView === 'dashboard' ? 'Panel de control' : 'Desliza para volver'}
-        status={appData.isActive ? 'Activo' : 'Inactivo'} 
+        sectors={sectors} 
+        onZoneClick={() => setCurrentView('config')}
       />
 
-      {appData.message && (
-        <div className="glass-panel" style={{marginBottom: '16px', borderColor: 'var(--primary)'}}>
-          <p style={{color: 'var(--primary)'}}>{appData.message}</p>
-        </div>
-      )}
+      {/* 🛠️ FIX VISUAL: Eliminamos el bloque {appData.message} que aparecía molestando aquí */}
 
-      {/* Aquí se inyecta la vista actual con una animación CSS */}
       <div className="view-enter" key={currentView}>
         {renderView()}
       </div>
