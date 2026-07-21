@@ -156,6 +156,16 @@ export function useIrrigationApp() {
     }
   }, []);
 
+  const handleUpdateRoutine = useCallback(async (id, payload) => {
+    try {
+      const updated = await updateConfiguration(id, payload);
+      // Actualizamos la rutina en la pantalla instantáneamente
+      setConfigurations((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    } catch (error) {
+      console.error('Error al actualizar la rutina:', error);
+    }
+  }, []);
+
   const handleDeleteConfiguration = useCallback(async (id) => {
     try {
       await deleteConfiguration(id);
@@ -185,6 +195,7 @@ export function useIrrigationApp() {
       handleSaveConfiguration,
       handleToggleConfiguration,
       handleDeleteConfiguration,
+      handleUpdateRoutine,
     }),
     [configurations, handleCreateSector, handleSaveConfiguration, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors]
   );

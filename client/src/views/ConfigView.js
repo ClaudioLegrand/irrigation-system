@@ -4,30 +4,54 @@ export default function ConfigView({ appData }) {
   const { 
     sectors, configurations, handleToggleSector, handleSaveConfiguration, 
     handleCreateSector, newSector, setNewSector,
-    handleToggleConfiguration, handleDeleteConfiguration, newConfiguration, setNewConfiguration
+    handleToggleConfiguration, handleDeleteConfiguration,
+    newConfiguration, setNewConfiguration,
+    handleUpdateRoutine 
   } = appData;
 
   const [selectedTab, setSelectedTab] = useState(sectors[0]?.id || 'NEW');
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [quickConfig, setQuickConfig] = useState({ startTime: '06:00', durationMinutes: 15 });
+  const [quickConfig, setQuickConfig] = useState({ startTime: '', durationMinutes: 15 });
   const [localError, setLocalError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  
+  const [editingRoutineId, setEditingRoutineId] = useState(null);
+  const [editData, setEditData] = useState({ startTime: '', durationMinutes: 15 });
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deletingIds, setDeletingIds] = useState([]);
 
+  // EFECTO 1: Limpiar al cambiar de pestaña
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
       setSelectedTab(sectors[0]?.id || 'NEW');
     }
-    setIsEditMode(false);
-    setLocalError(''); // Limpiamos errores al cambiar de pestaña
+    cancelEditing(); 
   }, [sectors, selectedTab]);
+
+  // EFECTO 2: Detector Inteligente de Clics (Reemplaza a la capa invisible)
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      // Si el usuario toca dentro de la tarjeta que está editando, no hacemos nada.
+      if (e.target.closest('.editing-card')) return;
+      // Si toca afuera, cerramos.
+      cancelEditing();
+    };
+
+    if (editingRoutineId) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [editingRoutineId]);
 
   const selectedSectorObj = sectors.find(s => s.id === selectedTab);
   const sectorConfigs = configurations.filter(c => c.sectorId === selectedTab);
 
   const formatTime = (timeObj) => {
     if (!timeObj) return '--:--';
-    // FIX: Si viene de la base de datos como "06:00:00", extraemos solo "06:00"
-    if (typeof timeObj === 'string') return timeObj.substring(0, 5); 
+    if (typeof timeObj === 'string') return timeObj.substring(0, 5);
     const h = String(timeObj.hour).padStart(2, '0');
     const m = String(timeObj.minute).padStart(2, '0');
     return `${h}:${m}`;
@@ -39,12 +63,9 @@ export default function ConfigView({ appData }) {
     return timeA.localeCompare(timeB);
   });
 
-  const onSaveQuickConfig = async (e) => { // <-- IMPORTANTE: Ahora es async
+  const onSaveQuickConfig = async (e) => {
     e.preventDefault();
-    
-    // ESCUDO: Si ya se está guardando, ignorar cualquier otro clic accidental
     if (isSaving) return; 
-
     setLocalError(''); 
 
     const timeToSave = quickConfig.startTime;
@@ -55,29 +76,62 @@ export default function ConfigView({ appData }) {
       return; 
     }
 
-    setIsSaving(true); // Bloqueamos la interfaz
-    
+    setIsSaving(true);
     try {
-      // Esperamos a que termine de guardar en el backend
       await handleSaveConfiguration({
         sectorId: selectedTab,
         startTime: quickConfig.startTime,
         durationMinutes: Number(quickConfig.durationMinutes),
         enabled: true,
       });
-      
-      // UX: Limpiamos la hora para que no quede escrita y evitar que guarde lo mismo por error
       setQuickConfig({ startTime: '', durationMinutes: 15 });
-      
     } finally {
-      setIsSaving(false); // Liberamos el botón, pase lo que pase
+      setIsSaving(false);
     }
+  };
+
+  const startEditing = (routine) => {
+    setLocalError('');
+    setConfirmDeleteId(null); 
+    setEditingRoutineId(routine.id);
+    setEditData({
+      startTime: formatTime(routine.startTime),
+      durationMinutes: routine.durationMinutes
+    });
+  };
+
+  const cancelEditing = () => {
+    setEditingRoutineId(null);
+    setLocalError('');
+    setConfirmDeleteId(null);
+  };
+
+  const saveEdit = async (e, originalRoutine) => {
+    e.preventDefault();
+    setLocalError('');
+
+    const timeToSave = editData.startTime;
+    const isDuplicate = sectorConfigs.some(
+      c => c.id !== originalRoutine.id && formatTime(c.startTime) === timeToSave
+    );
+
+    if (isDuplicate) {
+      setLocalError(`Ya existe otra rutina a las ${timeToSave}.`);
+      return;
+    }
+
+    await handleUpdateRoutine(originalRoutine.id, {
+      ...originalRoutine,
+      startTime: editData.startTime,
+      durationMinutes: Number(editData.durationMinutes)
+    });
+
+    cancelEditing(); 
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* 1. Selector Horizontal (Chips) */}
       <div className="tabs-container">
         <button className={`chip ${selectedTab === 'NEW' ? 'active' : ''}`} onClick={() => setSelectedTab('NEW')}>
           ➕ Nuevo
@@ -94,10 +148,8 @@ export default function ConfigView({ appData }) {
         ))}
       </div>
 
-      {/* 2. Pantalla de Sector Seleccionado */}
       {selectedTab !== 'NEW' && selectedSectorObj && (
         <>
-          {/* Panel Principal del Sector */}
           <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ fontSize: '1.2rem', color: 'var(--text-main)' }}>{selectedSectorObj.name}</h3>
@@ -106,18 +158,13 @@ export default function ConfigView({ appData }) {
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                className={`switch-toggle ${selectedSectorObj.currentState === 'ACTIVE' ? 'is-on' : 'is-off'}`}
-                onClick={() => handleToggleSector(selectedSectorObj)}
-              >
+              <button type="button" className={`switch-toggle ${selectedSectorObj.currentState === 'ACTIVE' ? 'is-on' : 'is-off'}`} onClick={() => handleToggleSector(selectedSectorObj)}>
                 <span className="switch-toggle__thumb" />
               </button>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: selectedSectorObj.currentState === 'ACTIVE' ? 'var(--primary)' : 'var(--text-muted)' }}>
                   {selectedSectorObj.currentState === 'ACTIVE' ? 'HABILITADO' : 'DESHABILITADO'}
                 </div>
-                {/* Nuevo subtítulo sutil en lugar del cartel gigante */}
                 {selectedSectorObj.currentState !== 'ACTIVE' && (
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px', opacity: 0.8 }}>
                     (Rutinas pausadas)
@@ -126,20 +173,10 @@ export default function ConfigView({ appData }) {
               </div>
             </div>
           </div>
-          
 
-          {/* Bloque 1: Lista de Rutinas (AHORA SEPARADO) */}
           <div className="glass-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ marginBottom: '16px' }}>
               <h3 style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>Rutinas Programadas</h3>
-              {sectorConfigs.length > 0 && (
-                <button 
-                  onClick={() => setIsEditMode(!isEditMode)}
-                  style={{ background: 'none', border: 'none', color: isEditMode ? 'var(--danger)' : 'var(--accent)', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}
-                >
-                  {isEditMode ? 'Listo' : 'Editar'}
-                </button>
-              )}
             </div>
             
             {sortedConfigs.length === 0 ? (
@@ -148,132 +185,163 @@ export default function ConfigView({ appData }) {
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {sortedConfigs.map((c, index) => (
-                  <div key={c.id} className="list-item-enter" style={{ 
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                    background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
-                    opacity: c.enabled ? 1 : 0.5,
-                    borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
-                    transition: 'all 0.2s ease'
-                  }}>
-                    <div>
-                      <h4 style={{ fontSize: '1.3rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                        {formatTime(c.startTime)}
-                      </h4>
-                      <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px' }}>{c.durationMinutes} minutos</p>
+                {sortedConfigs.map((c) => {
+                  const isEditing = editingRoutineId === c.id;
+                  const isDeleting = deletingIds.includes(c.id);
+                  
+                  return (
+                    <div 
+                      key={c.id} 
+                      className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
+                      style={{ 
+                        background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', 
+                        /* ... todo tu otro estilo sigue igual ... */
+                        padding: '12px 16px', 
+                        borderRadius: '16px',
+                        opacity: c.enabled || isEditing ? 1 : 0.5,
+                        borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
+                        transition: 'all 0.3s ease',
+                        cursor: isEditing ? 'default' : 'pointer'
+                      }}
+                      onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
+                    >
+                      {/* 1. CABECERA (Siempre visible) */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <h4 style={{ fontSize: '1.3rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                            {formatTime(c.startTime)}
+                          </h4>
+                          <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px' }}>
+                            {c.durationMinutes} minutos
+                          </p>
+                        </div>
+                        
+                        {/* Si estamos editando, mostramos una 'X' sutil. Si no, el switch normal */}
+                        {isEditing ? (
+                          <button 
+                            type="button" 
+                            onClick={(e) => { e.stopPropagation(); cancelEditing(); }} 
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}
+                          >
+                            ✕
+                          </button>
+                        ) : (
+                          <button 
+                            type="button" 
+                            className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} 
+                            onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}
+                          >
+                            <span className="switch-toggle__thumb" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 2. CUERPO DEL FORMULARIO (Acordeón que se despliega suavemente) */}
+                      <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
+                        <div className="accordion-content">
+                          <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
+                            
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                <label style={{ fontSize: '0.8rem' }}>Hora</label>
+                                <input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required />
+                              </div>
+                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                <label style={{ fontSize: '0.8rem' }}>Minutos</label>
+                                <input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required />
+                              </div>
+                            </div>
+                            
+                            {localError && <div style={{ color: '#fca5a5', fontSize: '0.8rem' }}>{localError}</div>}
+                            
+                            {/* BOTONES LADO A LADO */}
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                              <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.9rem', margin: 0 }}>
+                                Guardar
+                              </button>
+                              
+                              <button 
+                                type="button" 
+                                onClick={(e) => { 
+                                  e.stopPropagation();
+                                  if (confirmDeleteId === c.id) {
+                                    // 1. Iniciamos la animación
+                                    setDeletingIds(prev => [...prev, c.id]);
+                                    
+                                    // FIX: NO llamamos a cancelEditing() aquí para que el formulario 
+                                    // no intente cerrarse a la fuerza mientras se está desvaneciendo.
+
+                                    // 2. Esperamos a que la animación termine (400ms) para borrarlo
+                                    setTimeout(() => {
+                                      handleDeleteConfiguration(c.id);
+                                      // FIX: No quitamos el ID de 'deletingIds' para que mantenga 
+                                      // la altura en cero hasta que la base de datos lo borre definitivamente.
+                                    }, 400);
+                                  } else {
+                                    setConfirmDeleteId(c.id);
+                                  }
+                                }} 
+                                style={{ 
+                                  flex: 1, 
+                                  padding: '12px', 
+                                  fontSize: '0.9rem', 
+                                  fontWeight: 'bold',
+                                  borderRadius: '12px',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                                  background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent',
+                                  color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)',
+                                  margin: 0
+                                }}
+                              >
+                                {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
                     </div>
-                    
-                    {isEditMode ? (
-                      <button 
-                        onClick={() => handleDeleteConfiguration(c.id)}
-                        style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.2rem' }}
-                        title="Borrar rutina"
-                      >
-                        🗑️
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`}
-                        onClick={() => handleToggleConfiguration(c)}
-                      >
-                        <span className="switch-toggle__thumb" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Bloque 2: Formulario Nueva Rutina (AHORA SEPARADO) */}
           <div className="glass-panel" style={{ padding: '16px' }}>
-             {/* El título ahora comparte jerarquía y color */}
-            <h3 style={{ fontSize: '1.1rem', color: 'var(--primary)', marginBottom: '16px' }}>
-              Nueva Rutina
-            </h3>
-            
-            {localError && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                {localError}
-              </div>
+            <h3 style={{ fontSize: '1.1rem', color: 'var(--primary)', marginBottom: '16px' }}>Nueva Rutina</h3>
+            {localError && !editingRoutineId && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{localError}</div>
             )}
-
             <form onSubmit={onSaveQuickConfig} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', gap: '12px' }}>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Hora</label>
-                  <input type="time" value={quickConfig.startTime} onChange={e => setQuickConfig({...quickConfig, startTime: e.target.value})} required />
-                </div>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Minutos</label>
-                  <input type="number" min="5" max="180" value={quickConfig.durationMinutes} onChange={e => setQuickConfig({...quickConfig, durationMinutes: e.target.value})} required />
-                </div>
+                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Hora</label><input type="time" value={quickConfig.startTime} onChange={e => setQuickConfig({...quickConfig, startTime: e.target.value})} required /></div>
+                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Minutos</label><input type="number" min="5" max="180" value={quickConfig.durationMinutes} onChange={e => setQuickConfig({...quickConfig, durationMinutes: e.target.value})} required /></div>
               </div>
-              <button 
-                type="submit" 
-                className="btn-primary" 
-                style={{ padding: '14px', opacity: isSaving ? 0.7 : 1 }}
-                disabled={isSaving}
-              >
-                {isSaving ? 'Guardando...' : 'Crear rutina'}
-              </button>
+              <button type="submit" className="btn-primary" style={{ padding: '14px', opacity: isSaving ? 0.7 : 1 }} disabled={isSaving}>{isSaving ? 'Guardando...' : 'Crear rutina'}</button>
             </form>
           </div>
         </>
       )}
 
-      {/* 3. Pantalla de Agregar Nuevo Sector */}
       {selectedTab === 'NEW' && (
         <div className="glass-panel">
           <h3 style={{ fontSize: '1.2rem', marginBottom: '6px' }}>Crear Sector</h3>
           <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '20px' }}>Agrega una nueva zona de riego</p>
-          
-          <form onSubmit={(e) => {
-            handleCreateSector(e, { 
-              defaultConfiguration: newSector.defaultConfiguration, 
-              createConfiguration: newSector.defaultConfiguration 
-            });
-            setSelectedTab(sectors[0]?.id || 'NEW'); 
-          }}>
-            <div className="input-group">
-              <label>Nombre del sector</label>
-              <input type="text" value={newSector.name} onChange={e => setNewSector({...newSector, name: e.target.value})} placeholder="Ej. Patio trasero" />
-            </div>
-            <div className="input-group">
-              <label>Descripción</label>
-              <input type="text" value={newSector.description} onChange={e => setNewSector({...newSector, description: e.target.value})} placeholder="Ej. Zona de macetas" />
-            </div>
-
+          <form onSubmit={(e) => { handleCreateSector(e, { defaultConfiguration: newSector.defaultConfiguration, createConfiguration: newSector.defaultConfiguration }); setSelectedTab(sectors[0]?.id || 'NEW'); }}>
+            <div className="input-group"><label>Nombre del sector</label><input type="text" value={newSector.name} onChange={e => setNewSector({...newSector, name: e.target.value})} placeholder="Ej. Patio trasero" /></div>
+            <div className="input-group"><label>Descripción</label><input type="text" value={newSector.description} onChange={e => setNewSector({...newSector, description: e.target.value})} placeholder="Ej. Zona de macetas" /></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 16px 0', borderTop: '1px solid var(--surface-border)', paddingTop: '16px' }}>
-              <div>
-                <p style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>Añadir rutina inicial</p>
-              </div>
-              <button
-                type="button"
-                className={`switch-toggle ${newSector.defaultConfiguration ? 'is-on' : 'is-off'}`}
-                onClick={() => setNewSector(prev => ({ ...prev, defaultConfiguration: !prev.defaultConfiguration }))}
-              >
-                <span className="switch-toggle__thumb" />
-              </button>
+              <div><p style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>Añadir rutina inicial</p></div>
+              <button type="button" className={`switch-toggle ${newSector.defaultConfiguration ? 'is-on' : 'is-off'}`} onClick={() => setNewSector(prev => ({ ...prev, defaultConfiguration: !prev.defaultConfiguration }))}><span className="switch-toggle__thumb" /></button>
             </div>
-
             {newSector.defaultConfiguration && (
               <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Hora</label>
-                  <input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} />
-                </div>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Min</label>
-                  <input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} />
-                </div>
+                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Hora</label><input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
               </div>
             )}
-
-            <button type="submit" className="btn-primary" style={{ marginTop: newSector.defaultConfiguration ? 0 : '16px' }}>
-              {newSector.defaultConfiguration ? 'Crear sector y rutina' : 'Crear sector'}
-            </button>
+            <button type="submit" className="btn-primary" style={{ marginTop: newSector.defaultConfiguration ? 0 : '16px' }}>{newSector.defaultConfiguration ? 'Crear sector y rutina' : 'Crear sector'}</button>
           </form>
         </div>
       )}

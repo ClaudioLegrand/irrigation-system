@@ -245,3 +245,71 @@ h2 { font-size: 1.4rem; font-weight: 600; }
   from { opacity: 0; transform: translate(-50%, -20px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* === Fluidez de Despliegue (Acordeón) === */
+.accordion-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out;
+  opacity: 0;
+}
+
+.accordion-wrapper.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-content {
+  overflow: hidden;
+}
+
+@keyframes formExpand {
+  from { 
+    opacity: 0; 
+    max-height: 0;
+    transform: translateY(-10px);
+  }
+  to { 
+    opacity: 1; 
+    max-height: 250px; /* Espacio suficiente para los botones */
+    transform: translateY(0);
+  }
+}
+
+/* === Fluidez al Eliminar Rutina === */
+.list-item-exit {
+  /* Dura 350ms para asegurar que termine antes de que React lo borre a los 400ms */
+  animation: evaporatePerfect 0.35s ease-out forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+@keyframes evaporatePerfect {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 250px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+  }
+  /* Fase 1 (del 0% al 40%): Se desliza y desaparece, pero mantiene su espacio intacto */
+  40% {
+    opacity: 0;
+    transform: translateX(-20px); /* Deslizamiento más pronunciado */
+    max-height: 250px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+  }
+  /* Fase 2 (del 40% al 100%): Ahora que es invisible, el espacio se cierra como mantequilla */
+  100% {
+    opacity: 0;
+    transform: translateX(-20px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border: none;
+  }
+}

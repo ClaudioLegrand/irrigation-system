@@ -97,13 +97,6 @@ function App() {
         onZoneClick={() => setCurrentView('config')}
       />
 
-      {/* Notificación flotante ÚNICA */}
-      {appData.message && (
-        <div className="toast-banner">
-          {appData.message}
-        </div>
-      )}
-
       {/* Contenedor ÚNICO de la vista actual */}
       <div className="view-enter" key={`view-${currentView}`}>
         {renderView()}
