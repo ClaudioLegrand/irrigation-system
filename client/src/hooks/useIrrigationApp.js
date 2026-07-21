@@ -121,11 +121,25 @@ export function useIrrigationApp() {
 
   const handleSaveConfiguration = useCallback(async (payload) => {
     try {
-      const created = await createConfiguration(payload);
-      setConfigurations((prev) => [created, ...prev]);
-      setMessage('Configuración guardada correctamente');
+      // Mandamos a guardar/crear al backend
+      const savedConfig = await createConfiguration(payload);
+      
+      setConfigurations((prev) => {
+        // ESCUDO: Verificamos si el backend nos devolvió un ID que ya tenemos en pantalla
+        const exists = prev.some((c) => c.id === savedConfig.id);
+        
+        if (exists) {
+          // Si el ID ya existe, lo actualizamos (pisamos el viejo) para evitar el error de "misma key"
+          return prev.map((c) => (c.id === savedConfig.id ? savedConfig : c));
+        } else {
+          // Si es un ID nuevo, lo agregamos a la lista
+          return [...prev, savedConfig];
+        }
+      });
+      
+      setMessage('Rutina programada');
     } catch (error) {
-      setMessage(error.message || 'No se pudo guardar la configuración');
+      setMessage(error.message || 'Error al guardar la rutina');
     }
   }, []);
 

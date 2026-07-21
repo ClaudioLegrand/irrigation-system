@@ -97,9 +97,15 @@ function App() {
         onZoneClick={() => setCurrentView('config')}
       />
 
-      {/* 🛠️ FIX VISUAL: Eliminamos el bloque {appData.message} que aparecía molestando aquí */}
+      {/* Notificación flotante ÚNICA */}
+      {appData.message && (
+        <div className="toast-banner">
+          {appData.message}
+        </div>
+      )}
 
-      <div className="view-enter" key={currentView}>
+      {/* Contenedor ÚNICO de la vista actual */}
+      <div className="view-enter" key={`view-${currentView}`}>
         {renderView()}
       </div>
 
