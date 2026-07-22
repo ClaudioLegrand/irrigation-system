@@ -7,7 +7,7 @@ export default function ConfigView({ appData }) {
     handleToggleConfiguration, handleDeleteConfiguration,
     newConfiguration, setNewConfiguration,
     handleUpdateRoutine,
-    lastSectorId, setLastSectorId
+    lastSectorId, setLastSectorId, handleToggleAllSectors
   } = appData;
 
   const [localTab, setLocalTab] = useState(sectors[0]?.id || 'NEW');
@@ -136,37 +136,71 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      <div className="tabs-header-layout">
-        <button 
-          className={`btn-fixed-new ${selectedTab === 'NEW' ? 'active' : ''}`} 
-          onClick={() => handleSetTab('NEW')}
-          title="Crear nuevo sector"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
+      {/* === NUEVA CABECERA DE ACCIONES MASIVAS === */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Mis Sectores
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            
+            <button 
+              className="btn-batch"
+              onClick={() => handleToggleAllSectors(true)} 
+              title="Habilitar todos los sectores"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Todos
+            </button>
 
-        <div 
-          className="tabs-scroll-area"
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchMove={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          {/* CORRECCIÓN: Si no es estrictamente falso, se asume habilitado */}
-          {sectors.filter(s => s.enabled !== false).map(sector => (
-            <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center' }}>
-              <span className="icon-active-dot"></span>{sector.name}
+            <button 
+              className="btn-batch"
+              onClick={() => handleToggleAllSectors(false)} 
+              title="Pausar todos los sectores"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+                <rect x="14" y="4" width="4" height="16" rx="1"></rect>
+              </svg>
+              Ninguno
             </button>
-          ))}
-          
-          {sectors.filter(s => s.enabled === false).map(sector => (
-            <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center', opacity: selectedTab === sector.id ? 1 : 0.6 }}>
-              <svg className="icon-paused" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
-              {sector.name}
-            </button>
-          ))}
+
+          </div>
+        </div>
+
+        <div className="tabs-header-layout">
+          <button 
+            className={`btn-fixed-new ${selectedTab === 'NEW' ? 'active' : ''}`} 
+            onClick={() => handleSetTab('NEW')}
+            title="Crear nuevo sector"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+
+          <div 
+            className="tabs-scroll-area"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
+            {sectors.filter(s => s.enabled).map(sector => (
+              <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center' }}>
+                <span className="icon-active-dot"></span>{sector.name}
+              </button>
+            ))}
+            
+            {sectors.filter(s => !s.enabled).map(sector => (
+              <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center', opacity: selectedTab === sector.id ? 1 : 0.6 }}>
+                <svg className="icon-paused" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
+                {sector.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

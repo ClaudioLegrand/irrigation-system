@@ -445,3 +445,27 @@ h2 { font-size: 1.4rem; font-weight: 600; }
   transform: translateY(-2px) scale(1.10); /* Salta un poquito hacia arriba y crece */
   filter: drop-shadow(0px 4px 8px rgba(16, 185, 129, 0.6)); /* Proyecta luz verde */
 }
+
+/* === Botones de Acciones Masivas (Batch) === */
+.btn-batch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px; /* Forma redonda de pastilla */
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.03); /* Fondo casi transparente */
+  color: var(--text-muted); /* Gris neutral, no parece "encendido" */
+  transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1); /* Transición fluida */
+}
+
+/* Efecto Físico al Tocar (Rebote y Luz) */
+.btn-batch:active {
+  transform: scale(0.92); /* Se encoge como un botón físico */
+  background: rgba(255, 255, 255, 0.15); /* Se ilumina el fondo */
+  border-color: var(--text-main);
+  color: var(--text-main); /* El texto se vuelve blanco brillante */
+}

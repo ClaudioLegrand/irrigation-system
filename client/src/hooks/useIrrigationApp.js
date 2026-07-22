@@ -98,6 +98,41 @@ export function useIrrigationApp() {
     }
   };
 
+  const handleToggleAllSectors = async (enableAll) => {
+    // 1. Armamos el paquete de datos
+    const payload = sectors.map(sector => ({
+      idSector: sector.id,
+      enabled: enableAll
+    }));
+
+    // 2. Actualizamos la UI inmediatamente para que se sienta súper rápido (Optimistic UI)
+    setSectors(prevSectors => prevSectors.map(s => ({
+      ...s,
+      enabled: enableAll
+    })));
+
+    try {
+      // 3. Enviamos la lista completa al backend
+      // (Si usas un archivo sectorService.js, puedes abstraer este fetch allí luego)
+      const response = await fetch('http://localhost:8080/api/sectors/list', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al actualizar los sectores');
+      }
+      
+      setMessage(enableAll ? 'Todos los sectores habilitados' : 'Riego automático pausado en todos los sectores');
+    } catch (error) {
+      console.error(error);
+      setMessage('Error de conexión al modificar sectores');
+      // Si falla, recargamos los datos reales para deshacer el cambio visual
+      loadData(); 
+    }
+  };
+
   const handleCreateSector = useCallback(async (event, options = {}) => {
     event.preventDefault();
 
@@ -224,6 +259,7 @@ export function useIrrigationApp() {
       handleToggleConfiguration,
       handleDeleteConfiguration,
       handleUpdateRoutine,
+      handleToggleAllSectors,
     }),
     [configurations, handleCreateSector, handleSaveConfiguration, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors]
   );
