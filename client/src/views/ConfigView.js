@@ -6,10 +6,19 @@ export default function ConfigView({ appData }) {
     handleCreateSector, newSector, setNewSector,
     handleToggleConfiguration, handleDeleteConfiguration,
     newConfiguration, setNewConfiguration,
-    handleUpdateRoutine 
+    handleUpdateRoutine,
+    lastSectorId, setLastSectorId // <-- 1. Recibimos la memoria global
   } = appData;
 
-  const [selectedTab, setSelectedTab] = useState(sectors[0]?.id || 'NEW');
+  // 2. Lógica inteligente: Si hay un último sector, úsalo. Si no, usa el primero.
+  const [localTab, setLocalTab] = useState(sectors[0]?.id || 'NEW');
+  const selectedTab = lastSectorId || localTab;
+
+  const handleSetTab = (id) => {
+    if (setLastSectorId) setLastSectorId(id); // Guarda globalmente
+    setLocalTab(id); // Guarda localmente por si acaso
+  };
+
   const [quickConfig, setQuickConfig] = useState({ startTime: '', durationMinutes: 15 });
   const [localError, setLocalError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -19,20 +28,16 @@ export default function ConfigView({ appData }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
 
-  // EFECTO 1: Limpiar al cambiar de pestaña
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
-      setSelectedTab(sectors[0]?.id || 'NEW');
+      handleSetTab(sectors[0]?.id || 'NEW');
     }
     cancelEditing(); 
   }, [sectors, selectedTab]);
 
-  // EFECTO 2: Detector Inteligente de Clics (Reemplaza a la capa invisible)
   useEffect(() => {
     const handleOutsideClick = (e) => {
-      // Si el usuario toca dentro de la tarjeta que está editando, no hacemos nada.
       if (e.target.closest('.editing-card')) return;
-      // Si toca afuera, cerramos.
       cancelEditing();
     };
 
@@ -132,20 +137,37 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      <div className="tabs-container">
-        <button className={`chip ${selectedTab === 'NEW' ? 'active' : ''}`} onClick={() => setSelectedTab('NEW')}>
-          ➕ Nuevo
+      <div className="tabs-header-layout">
+        <button 
+          className={`btn-fixed-new ${selectedTab === 'NEW' ? 'active' : ''}`} 
+          onClick={() => handleSetTab('NEW')}
+          title="Crear nuevo sector"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
         </button>
-        {sectors.filter(s => s.currentState === 'ACTIVE').map(sector => (
-          <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => setSelectedTab(sector.id)}>
-            ✅ {sector.name}
-          </button>
-        ))}
-        {sectors.filter(s => s.currentState !== 'ACTIVE').map(sector => (
-          <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => setSelectedTab(sector.id)} style={{ opacity: selectedTab === sector.id ? 1 : 0.6 }}>
-            ⏸️ {sector.name}
-          </button>
-        ))}
+
+        <div 
+          className="tabs-scroll-area"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {sectors.filter(s => s.currentState === 'ACTIVE').map(sector => (
+            <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center' }}>
+              <span className="icon-active-dot"></span>{sector.name}
+            </button>
+          ))}
+          
+          {sectors.filter(s => s.currentState !== 'ACTIVE').map(sector => (
+            <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center', opacity: selectedTab === sector.id ? 1 : 0.6 }}>
+              <svg className="icon-paused" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
+              {sector.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {selectedTab !== 'NEW' && selectedSectorObj && (
@@ -180,9 +202,7 @@ export default function ConfigView({ appData }) {
             </div>
             
             {sortedConfigs.length === 0 ? (
-              <p className="text-muted" style={{ fontSize: '0.9rem', textAlign: 'center', padding: '20px 10px' }}>
-                No tienes ninguna rutina programada.
-              </p>
+              <p className="text-muted" style={{ fontSize: '0.9rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {sortedConfigs.map((c) => {
@@ -194,105 +214,59 @@ export default function ConfigView({ appData }) {
                       key={c.id} 
                       className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
                       style={{ 
-                        background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', 
-                        /* ... todo tu otro estilo sigue igual ... */
-                        padding: '12px 16px', 
-                        borderRadius: '16px',
-                        opacity: c.enabled || isEditing ? 1 : 0.5,
-                        borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
-                        transition: 'all 0.3s ease',
-                        cursor: isEditing ? 'default' : 'pointer'
+                        background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
+                        opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
+                        transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer'
                       }}
                       onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
                     >
-                      {/* 1. CABECERA (Siempre visible) */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <h4 style={{ fontSize: '1.3rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
                             {formatTime(c.startTime)}
                           </h4>
-                          <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px' }}>
+                          {/* 3. FIX: Ahora los minutos también se hacen transparentes si está apagado */}
+                          <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
                             {c.durationMinutes} minutos
                           </p>
                         </div>
                         
-                        {/* Si estamos editando, mostramos una 'X' sutil. Si no, el switch normal */}
                         {isEditing ? (
-                          <button 
-                            type="button" 
-                            onClick={(e) => { e.stopPropagation(); cancelEditing(); }} 
-                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}
-                          >
-                            ✕
-                          </button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
                         ) : (
-                          <button 
-                            type="button" 
-                            className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} 
-                            onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}
-                          >
+                          <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
                             <span className="switch-toggle__thumb" />
                           </button>
                         )}
                       </div>
 
-                      {/* 2. CUERPO DEL FORMULARIO (Acordeón que se despliega suavemente) */}
                       <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
                         <div className="accordion-content">
                           <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
-                            
                             <div style={{ display: 'flex', gap: '12px' }}>
-                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                                <label style={{ fontSize: '0.8rem' }}>Hora</label>
-                                <input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required />
-                              </div>
-                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                                <label style={{ fontSize: '0.8rem' }}>Minutos</label>
-                                <input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required />
-                              </div>
+                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.8rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
+                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.8rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
                             </div>
                             
                             {localError && <div style={{ color: '#fca5a5', fontSize: '0.8rem' }}>{localError}</div>}
                             
-                            {/* BOTONES LADO A LADO */}
                             <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                              <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.9rem', margin: 0 }}>
-                                Guardar
-                              </button>
-                              
+                              <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.9rem', margin: 0 }}>Guardar</button>
                               <button 
                                 type="button" 
                                 onClick={(e) => { 
                                   e.stopPropagation();
                                   if (confirmDeleteId === c.id) {
-                                    // 1. Iniciamos la animación
                                     setDeletingIds(prev => [...prev, c.id]);
-                                    
-                                    // FIX: NO llamamos a cancelEditing() aquí para que el formulario 
-                                    // no intente cerrarse a la fuerza mientras se está desvaneciendo.
-
-                                    // 2. Esperamos a que la animación termine (400ms) para borrarlo
-                                    setTimeout(() => {
-                                      handleDeleteConfiguration(c.id);
-                                      // FIX: No quitamos el ID de 'deletingIds' para que mantenga 
-                                      // la altura en cero hasta que la base de datos lo borre definitivamente.
-                                    }, 400);
+                                    setTimeout(() => { handleDeleteConfiguration(c.id); }, 400);
                                   } else {
                                     setConfirmDeleteId(c.id);
                                   }
                                 }} 
                                 style={{ 
-                                  flex: 1, 
-                                  padding: '12px', 
-                                  fontSize: '0.9rem', 
-                                  fontWeight: 'bold',
-                                  borderRadius: '12px',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s ease',
+                                  flex: 1, padding: '12px', fontSize: '0.9rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
                                   border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
-                                  background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent',
-                                  color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)',
-                                  margin: 0
+                                  background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
                                 }}
                               >
                                 {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
@@ -310,9 +284,7 @@ export default function ConfigView({ appData }) {
 
           <div className="glass-panel" style={{ padding: '16px' }}>
             <h3 style={{ fontSize: '1.1rem', color: 'var(--primary)', marginBottom: '16px' }}>Nueva Rutina</h3>
-            {localError && !editingRoutineId && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{localError}</div>
-            )}
+            {localError && !editingRoutineId && <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{localError}</div>}
             <form onSubmit={onSaveQuickConfig} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Hora</label><input type="time" value={quickConfig.startTime} onChange={e => setQuickConfig({...quickConfig, startTime: e.target.value})} required /></div>
@@ -328,20 +300,24 @@ export default function ConfigView({ appData }) {
         <div className="glass-panel">
           <h3 style={{ fontSize: '1.2rem', marginBottom: '6px' }}>Crear Sector</h3>
           <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '20px' }}>Agrega una nueva zona de riego</p>
-          <form onSubmit={(e) => { handleCreateSector(e, { defaultConfiguration: newSector.defaultConfiguration, createConfiguration: newSector.defaultConfiguration }); setSelectedTab(sectors[0]?.id || 'NEW'); }}>
+          <form onSubmit={(e) => { handleCreateSector(e, { defaultConfiguration: newSector.defaultConfiguration, createConfiguration: newSector.defaultConfiguration }); handleSetTab(sectors[0]?.id || 'NEW'); }}>
             <div className="input-group"><label>Nombre del sector</label><input type="text" value={newSector.name} onChange={e => setNewSector({...newSector, name: e.target.value})} placeholder="Ej. Patio trasero" /></div>
             <div className="input-group"><label>Descripción</label><input type="text" value={newSector.description} onChange={e => setNewSector({...newSector, description: e.target.value})} placeholder="Ej. Zona de macetas" /></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 16px 0', borderTop: '1px solid var(--surface-border)', paddingTop: '16px' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 0 0', borderTop: '1px solid var(--surface-border)', paddingTop: '16px' }}>
               <div><p style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>Añadir rutina inicial</p></div>
               <button type="button" className={`switch-toggle ${newSector.defaultConfiguration ? 'is-on' : 'is-off'}`} onClick={() => setNewSector(prev => ({ ...prev, defaultConfiguration: !prev.defaultConfiguration }))}><span className="switch-toggle__thumb" /></button>
             </div>
-            {newSector.defaultConfiguration && (
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Hora</label><input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} /></div>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
+            
+            <div className={`accordion-wrapper ${newSector.defaultConfiguration ? 'expanded' : ''}`}>
+              <div className="accordion-content">
+                <div style={{ display: 'flex', gap: '12px', paddingTop: '16px' }}>
+                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Hora</label><input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                </div>
               </div>
-            )}
-            <button type="submit" className="btn-primary" style={{ marginTop: newSector.defaultConfiguration ? 0 : '16px' }}>{newSector.defaultConfiguration ? 'Crear sector y rutina' : 'Crear sector'}</button>
+            </div>
+            <button type="submit" className="btn-primary" style={{ marginTop: '20px' }}>{newSector.defaultConfiguration ? 'Crear sector y rutina' : 'Crear sector'}</button>
           </form>
         </div>
       )}

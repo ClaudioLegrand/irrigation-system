@@ -11,7 +11,20 @@ import ConfigView from './views/ConfigView';
 import HistoryView from './views/HistoryView';
 
 function App() {
-  const appData = useIrrigationApp();
+  // 1. Obtenemos los datos de tu hook (lo guardamos en una variable base)
+  const baseAppData = useIrrigationApp();
+
+  // 2. Creamos la memoria para el último sector
+  const [lastSectorId, setLastSectorId] = useState(null);
+
+  // 3. Juntamos TODO (lo del hook + la memoria) en tu objeto appData oficial
+  const appData = {
+    ...baseAppData,
+    lastSectorId,
+    setLastSectorId
+  };
+
+  // 4. Extraemos SOLO lo que App.js necesita (sectors y loading) sin causar conflicto
   const { sectors, loading } = appData;
   
   const [currentView, setCurrentView] = useState('dashboard');
