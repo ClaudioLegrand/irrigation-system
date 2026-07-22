@@ -12,4 +12,5 @@ public class SectorResponse {
     private String name;
     private String description;
     private String currentState;
+    private Boolean enabled;
 }

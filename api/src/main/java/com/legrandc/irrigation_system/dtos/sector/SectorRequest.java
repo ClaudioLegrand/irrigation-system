@@ -25,4 +25,7 @@ public class SectorRequest {
     @NotNull
     @Schema(type = "string", example = "ACTIVE or INACTIVE", description = "Current state of the sector")
     private String currentState;
+
+    @Schema(type = "boolean", example = "true", description = "Indicates if the sector is enabled")
+    private Boolean enabled;
 }

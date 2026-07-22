@@ -41,7 +41,16 @@ export function useIrrigationApp() {
   }, []);
 
   useEffect(() => {
+    // 1. Hace la primera carga inmediatamente al abrir la app
     loadData();
+
+    // 2. Crea el ciclo que le pregunta a tu backend cada 3 segundos (3000ms)
+    const intervalId = setInterval(() => {
+      loadData(); 
+    }, 3000);
+
+    // 3. Limpieza del intervalo si cierras la app o cambias de vista
+    return () => clearInterval(intervalId);
   }, [loadData]);
 
   const handleToggleMain = useCallback(async () => {
@@ -54,21 +63,40 @@ export function useIrrigationApp() {
     // El hardware ahora sabrá que debe regar los que ya están habilitados.
   }, [isActive]);
 
-  const handleToggleSector = useCallback(async (sector) => {
-    const nextState = sector.currentState === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+  const handleToggleSector = async (sector) => {
+    // 1. Invertimos el valor de 'enabled'
+    const currentStatus = sector.enabled !== false;
+    
+    // 2. Lo invertimos correctamente
+    const updatedStatus = !currentStatus;
+    
+    const payload = {
+      name: sector.name,
+      description: sector.description,
+      enabled: updatedStatus,           // NUNCA MÁS ENVIARÁ NULL
+      currentState: sector.currentState 
+    };
+
     try {
-      const updated = await updateSector(sector.id, {
-        ...sector,
-        currentState: nextState,
-        defaultConfiguration: false,
+      // 3. Enviamos el PUT al backend
+      const response = await fetch(`http://localhost:8080/api/sectors/${sector.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
       });
-      
-      setSectors((prev) => prev.map((item) => (item.id === sector.id ? updated : item)));
-      // ELIMINAMOS la línea que encendía el botón al habilitar un sector
+
+      if (response.ok) {
+        // 4. Actualizamos el estado de React localmente
+        setSectors(prevSectors => prevSectors.map(s => 
+          s.id === sector.id ? { ...s, enabled: updatedStatus } : s
+        ));
+      }
     } catch (error) {
-      setMessage(error.message || 'No se pudo cambiar el estado del sector');
+      console.error("Error al habilitar/deshabilitar el sector:", error);
     }
-  }, []);
+  };
 
   const handleCreateSector = useCallback(async (event, options = {}) => {
     event.preventDefault();

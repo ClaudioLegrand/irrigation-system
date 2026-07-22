@@ -3,22 +3,31 @@ import React from 'react';
 export default function DashboardView({ appData, setCurrentView }) {
   const { isActive, handleToggleMain, sectors, configurations, history } = appData;
   
-  // Lógica inteligente para saber QUÉ se está regando
-  const activeSectors = sectors.filter(s => s.currentState === 'ACTIVE');
-  const activeCount = activeSectors.length;
+  // 1. Lógica de Sectores Habilitados (Los que tienen el puntito verde)
+  const enabledSectors = sectors.filter(s => s.enabled !== false);
+  const enabledCount = enabledSectors.length;
   
+  // 2. Lógica del Hardware (Por si se enciende solo por una rutina programada)
+  const wateringSectors = sectors.filter(s => s.currentState === 'ACTIVE');
+  const wateringCount = wateringSectors.length;
+  
+  // === LA NUEVA LÓGICA DEL MINI-MAPA ===
+  // Se enciende si tocaste el botón manual (isActive) O si el hardware está regando por su cuenta
+  const isMiniMapActive = isActive || wateringCount > 0;
+  
+  // Si encendiste manual, muestra los habilitados. Si es automático, muestra los que confirma el hardware.
+  const displaySectors = isActive ? enabledSectors : wateringSectors;
+  const displayCount = displaySectors.length;
+
   let heroSubtext = '';
-  
   if (isActive) {
-    // Si el botón está presionado (REGANDO)
-    if (activeCount === 0) heroSubtext = 'Ningún sector habilitado';
-    else if (activeCount === 1) heroSubtext = `Regando: ${activeSectors[0].name}`;
-    else heroSubtext = `Regando: ${activeCount} zonas`;
+    if (enabledCount === 0) heroSubtext = 'Ningún sector habilitado';
+    else if (enabledCount === 1) heroSubtext = `Regando: ${enabledSectors[0].name}`;
+    else heroSubtext = `Regando: ${enabledCount} zonas`;
   } else {
-    // Si el botón está apagado (EN ESPERA)
-    if (activeCount === 0) heroSubtext = 'Sin sectores habilitados';
-    else if (activeCount === 1) heroSubtext = '1 zona lista para regar';
-    else heroSubtext = `${activeCount} zonas listas`;
+    if (enabledCount === 0) heroSubtext = 'Sin sectores habilitados';
+    else if (enabledCount === 1) heroSubtext = '1 zona lista para regar';
+    else heroSubtext = `${enabledCount} zonas listas`;
   }
 
   const formatTime = (timeObj) => {
@@ -55,26 +64,26 @@ export default function DashboardView({ appData, setCurrentView }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
         
-        {/* Tarjeta Camaleón: Cambia si está regando */}
+        {/* === EL MINI-MAPA SINCRONIZADO === */}
         <div 
           className="glass-panel" 
           style={{ 
             cursor: 'pointer', padding: '16px',
-            borderColor: isActive ? 'var(--primary)' : 'var(--surface-border)',
-            background: isActive ? 'rgba(16, 185, 129, 0.05)' : 'var(--surface)'
+            borderColor: isMiniMapActive ? 'var(--primary)' : 'var(--surface-border)',
+            background: isMiniMapActive ? 'rgba(16, 185, 129, 0.05)' : 'var(--surface)'
           }} 
           onClick={() => setCurrentView('config')}
         >
-          <p className="eyebrow" style={{ color: isActive ? 'var(--primary)' : 'var(--accent)' }}>
-            {isActive ? 'En Proceso' : 'Próximo Riego'}
+          <p className="eyebrow" style={{ color: isMiniMapActive ? 'var(--primary)' : 'var(--accent)' }}>
+            {isMiniMapActive ? 'En Proceso' : 'Próximo Riego'}
           </p>
           <h3 style={{ fontSize: '1.2rem', marginTop: '4px' }}>
-            {isActive && activeCount > 0 
-              ? (activeCount === 1 ? activeSectors[0].name : `${activeCount} activos`) 
+            {isMiniMapActive 
+              ? (displayCount === 1 ? displaySectors[0].name : `${displayCount} activos`) 
               : (nextConfig ? formatTime(nextConfig.startTime) : 'Sin programar')}
           </h3>
           <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>
-            {isActive ? 'Riego activo' : (nextConfig ? `${nextConfig.durationMinutes} min` : 'Toca para ajustar')}
+            {isMiniMapActive ? 'Riego activo' : (nextConfig ? `${nextConfig.durationMinutes} min` : 'Toca para ajustar')}
           </p>
         </div>
 

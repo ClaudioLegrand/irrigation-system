@@ -7,16 +7,15 @@ export default function ConfigView({ appData }) {
     handleToggleConfiguration, handleDeleteConfiguration,
     newConfiguration, setNewConfiguration,
     handleUpdateRoutine,
-    lastSectorId, setLastSectorId // <-- 1. Recibimos la memoria global
+    lastSectorId, setLastSectorId
   } = appData;
 
-  // 2. Lógica inteligente: Si hay un último sector, úsalo. Si no, usa el primero.
   const [localTab, setLocalTab] = useState(sectors[0]?.id || 'NEW');
   const selectedTab = lastSectorId || localTab;
 
   const handleSetTab = (id) => {
-    if (setLastSectorId) setLastSectorId(id); // Guarda globalmente
-    setLocalTab(id); // Guarda localmente por si acaso
+    if (setLastSectorId) setLastSectorId(id);
+    setLocalTab(id);
   };
 
   const [quickConfig, setQuickConfig] = useState({ startTime: '', durationMinutes: 15 });
@@ -155,13 +154,14 @@ export default function ConfigView({ appData }) {
           onTouchMove={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
         >
-          {sectors.filter(s => s.currentState === 'ACTIVE').map(sector => (
+          {/* CORRECCIÓN: Si no es estrictamente falso, se asume habilitado */}
+          {sectors.filter(s => s.enabled !== false).map(sector => (
             <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center' }}>
               <span className="icon-active-dot"></span>{sector.name}
             </button>
           ))}
           
-          {sectors.filter(s => s.currentState !== 'ACTIVE').map(sector => (
+          {sectors.filter(s => s.enabled === false).map(sector => (
             <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center', opacity: selectedTab === sector.id ? 1 : 0.6 }}>
               <svg className="icon-paused" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
               {sector.name}
@@ -179,21 +179,33 @@ export default function ConfigView({ appData }) {
                 {selectedSectorObj.description || 'Sin descripción'}
               </p>
             </div>
+            
+            {/* CORRECCIÓN PARTE B: Todo esto ahora lee selectedSectorObj.enabled */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-              <button type="button" className={`switch-toggle ${selectedSectorObj.currentState === 'ACTIVE' ? 'is-on' : 'is-off'}`} onClick={() => handleToggleSector(selectedSectorObj)}>
-                <span className="switch-toggle__thumb" />
-              </button>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: selectedSectorObj.currentState === 'ACTIVE' ? 'var(--primary)' : 'var(--text-muted)' }}>
-                  {selectedSectorObj.currentState === 'ACTIVE' ? 'HABILITADO' : 'DESHABILITADO'}
-                </div>
-                {selectedSectorObj.currentState !== 'ACTIVE' && (
-                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px', opacity: 0.8 }}>
-                    (Rutinas pausadas)
-                  </div>
-                )}
-              </div>
+              {/* Leemos el estado blindado una sola vez */}
+              {(() => {
+                const isSectorEnabled = selectedSectorObj.enabled !== false;
+                return (
+                  <>
+                    <button type="button" className={`switch-toggle ${isSectorEnabled ? 'is-on' : 'is-off'}`} onClick={() => handleToggleSector(selectedSectorObj)}>
+                      <span className="switch-toggle__thumb" />
+                    </button>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: isSectorEnabled ? 'var(--primary)' : 'var(--text-muted)' }}>
+                        {isSectorEnabled ? 'HABILITADO' : 'DESHABILITADO'}
+                      </div>
+                      {!isSectorEnabled && (
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px', opacity: 0.8 }}>
+                          (Rutinas pausadas)
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
+            {/* FIN CORRECCIÓN PARTE B */}
+
           </div>
 
           <div className="glass-panel" style={{ padding: '16px' }}>
@@ -225,7 +237,6 @@ export default function ConfigView({ appData }) {
                           <h4 style={{ fontSize: '1.3rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
                             {formatTime(c.startTime)}
                           </h4>
-                          {/* 3. FIX: Ahora los minutos también se hacen transparentes si está apagado */}
                           <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
                             {c.durationMinutes} minutos
                           </p>

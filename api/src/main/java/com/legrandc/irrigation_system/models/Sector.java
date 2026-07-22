@@ -33,6 +33,9 @@ public class Sector {
     @Column(nullable = false)
     private SectorState currentState;
 
+    @Column(nullable = false)
+    private Boolean enabled = true;
+
     @OneToMany(mappedBy = "sector", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<IrrigationConfiguration> configurations = new ArrayList<>();
 

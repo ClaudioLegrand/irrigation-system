@@ -58,6 +58,7 @@ public class SectorServiceImpl implements SectorService {
         sector.setName(request.getName());
         sector.setDescription(request.getDescription());
         sector.setCurrentState(parseState(request.getCurrentState()));
+        sector.setEnabled(request.getEnabled());
         
         return toResponse(sectorRepository.save(sector));
     }
@@ -159,6 +160,7 @@ public class SectorServiceImpl implements SectorService {
         response.setName(sector.getName());
         response.setDescription(sector.getDescription());
         response.setCurrentState(sector.getCurrentState() != null ? sector.getCurrentState().name() : null);
+        response.setEnabled(sector.getEnabled());
 
         return response;
     }
