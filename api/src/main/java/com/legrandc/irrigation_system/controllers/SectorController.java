@@ -1,6 +1,7 @@
 package com.legrandc.irrigation_system.controllers;
 
 import com.legrandc.irrigation_system.dtos.ApiResponse;
+import com.legrandc.irrigation_system.dtos.sector.EnabledRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorResponse;
 import com.legrandc.irrigation_system.dtos.sector.SectorStateRequest;
@@ -52,6 +53,15 @@ public class SectorController {
         SectorResponse response = sectorService.updateSector(id, request);
 
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Update multiple Sector", description = "Update multiple new Sector from the provided list of request bodies.")
+    @PutMapping("/list")
+    public ResponseEntity<ApiResponse> updateSectorInBatch(@Valid @RequestBody List<EnabledRequest> listRequest) {
+        
+        sectorService.updateSectorInBatch(listRequest);
+
+        return ResponseEntity.ok(new ApiResponse("Sector successfully update"));
     }
 
     @Operation(summary = "Delete a sector", description = "Deletes a sector by its identifier.")

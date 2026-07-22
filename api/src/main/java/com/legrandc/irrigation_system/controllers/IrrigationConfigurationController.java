@@ -62,6 +62,15 @@ public class IrrigationConfigurationController {
         return ResponseEntity.ok(updatedConfiguration);
     }
 
+    @Operation(summary = "Update multiple configurations", description = "Update multiple new irrigation configurations from the provided list of request bodies.")
+    @PutMapping("/list")
+    public ResponseEntity<ApiResponse> updateConfigurationsInBatch(@Valid @RequestBody List<IrrigationConfigurationRequest> listRequest) {
+        
+        configurationService.updateConfigurationsInBatch(listRequest);
+
+        return ResponseEntity.ok(new ApiResponse("Configurations successfully updated"));
+    }
+
     @Operation(summary = "Delete a configuration", description = "Deletes an irrigation configuration by its identifier.")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse> deleteConfiguration(@PathVariable Long id) {

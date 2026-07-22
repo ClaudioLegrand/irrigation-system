@@ -1,5 +1,6 @@
 package com.legrandc.irrigation_system.services.impl;
 
+import com.legrandc.irrigation_system.dtos.sector.EnabledRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorResponse;
 import com.legrandc.irrigation_system.dtos.sector.SectorStateRequest;
@@ -23,6 +24,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -106,6 +108,25 @@ public class SectorServiceImpl implements SectorService {
         sendSignalToHardware(sector, request.getState());
 
         return toResponse(updatedSector);
+    }
+
+    @Override
+    @Transactional
+    public void updateSectorInBatch(List<EnabledRequest> sectorRequests) {
+
+        List<Sector> sectorToSave = new ArrayList<>();
+        
+        for (EnabledRequest request : sectorRequests){
+            
+            Sector sector = sectorRepository.findById(request.getIdSector()).orElseThrow(() -> new ResourceNotFoundException("Sector not found with id " + request.getIdSector()));
+
+            sector.setEnabled(request.getEnabled());
+
+            sectorToSave.add(sector);
+        }
+
+        sectorRepository.saveAll(sectorToSave);
+
     }
 
     // TODO: Implement the actual hardware communication logic in the sendSignalToHardware method. For now, it just prints a message to the console.

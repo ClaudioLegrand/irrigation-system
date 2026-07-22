@@ -16,6 +16,9 @@ public interface IrrigationConfigurationService {
     @Transactional
     void createConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest);
 
+    @Transactional
+    void updateConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest);
+
     IrrigationConfiguration createDefaultConfiguration(Sector sector);
 
     List<IrrigationConfigurationResponse> getAllConfigurations();
