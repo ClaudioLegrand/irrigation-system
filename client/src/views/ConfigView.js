@@ -22,7 +22,6 @@ export default function ConfigView({ appData }) {
   const [localError, setLocalError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
-  // ESTADO DE RUTINAS Y LÍMITE CON REBOTE
   const MAX_ROUTINES = 6;
   const [routineList, setRoutineList] = useState([
     { id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }
@@ -30,16 +29,20 @@ export default function ConfigView({ appData }) {
   const [removingRowIds, setRemovingRowIds] = useState([]);
   const [isAtLimitShake, setIsAtLimitShake] = useState(false);
 
+  const [sectorNameError, setSectorNameError] = useState('');
+
   const [editingRoutineId, setEditingRoutineId] = useState(null);
   const [editData, setEditData] = useState({ startTime: '', durationMinutes: 15 });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
 
-  // REFERENCIAS PARA EL AUTO-SCROLL Y FÍSICA DE REBOTE
+  // REFERENCIAS Y BANDERA DE INMUNIDAD PARA EL AUTO-SCROLL FLUIDO
   const routineRefs = useRef({});
   const scrollContainerRef = useRef(null);
-  const [scrollShadows, setScrollShadows] = useState({ top: false, bottom: true });
-  const [edgeBounce, setEdgeBounce] = useState(''); // 'top' o 'bottom'
+  const isProgrammaticScroll = useRef(false); // <--- ESCUDO ANTI-CONFLICTO CON EL REBOTE
+  
+  const [scrollShadows, setScrollShadows] = useState({ top: false, bottom: false });
+  const [edgeBounce, setEdgeBounce] = useState('');
 
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
@@ -47,9 +50,9 @@ export default function ConfigView({ appData }) {
     }
   }, [sectors, selectedTab]);
 
-  // La edición solo se cierra al cambiar voluntariamente de pestaña
   useEffect(() => {
     cancelEditing();
+    setSectorNameError('');
   }, [selectedTab]);
 
   const selectedSectorObj = sectors.find(s => s.id === selectedTab);
@@ -69,22 +72,46 @@ export default function ConfigView({ appData }) {
     return timeA.localeCompare(timeB);
   });
 
-  // SENSOR DE SCROLL PARA SOMBRAS DINÁMICAS Y REBOTE EN LOS TOPES
+  const checkScrollShadows = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const isAtTop = scrollTop <= 2;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight <= 2;
+    const hasScroll = scrollHeight > clientHeight;
+
+    setScrollShadows({
+      top: !isAtTop && hasScroll,
+      bottom: !isAtBottom && hasScroll
+    });
+  };
+
+  useEffect(() => {
+    checkScrollShadows();
+    const timer = setTimeout(checkScrollShadows, 350);
+    return () => clearTimeout(timer);
+  }, [selectedTab, sortedConfigs.length, editingRoutineId]);
+
+  // SENSOR DE SCROLL BLINDADO: Si el scroll es automático, ignoramos el rebote en los topes
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isAtTop = scrollTop <= 2;
     const isAtBottom = scrollHeight - scrollTop - clientHeight <= 2;
+    const hasScroll = scrollHeight > clientHeight;
 
     setScrollShadows({
-      top: !isAtTop,
-      bottom: !isAtBottom && scrollHeight > clientHeight
+      top: !isAtTop && hasScroll,
+      bottom: !isAtBottom && hasScroll
     });
 
-    // Gatillo de física de rebote si el usuario choca contra los topes
-    if (isAtTop && scrollTop === 0 && edgeBounce !== 'top') {
+    // Si la app está moviendo el scroll por ti, no dispares el rebote visual
+    if (isProgrammaticScroll.current) return;
+
+    if (isAtTop && scrollTop === 0 && edgeBounce !== 'top' && hasScroll) {
       setEdgeBounce('top');
       setTimeout(() => setEdgeBounce(''), 300);
-    } else if (isAtBottom && edgeBounce !== 'bottom' && scrollHeight > clientHeight) {
+    } else if (isAtBottom && edgeBounce !== 'bottom' && hasScroll) {
       setEdgeBounce('bottom');
       setTimeout(() => setEdgeBounce(''), 300);
     }
@@ -180,7 +207,23 @@ export default function ConfigView({ appData }) {
     }
   };
 
-  // AL ABRIR LA EDICIÓN, EJECUTAMOS EL AUTO-SCROLL COREOGRAFIADO
+  const handleCreateSectorSubmit = async (e) => {
+    e.preventDefault();
+    if (!newSector.name || !newSector.name.trim()) {
+      setSectorNameError('Ingresa un nombre para el sector');
+      return;
+    }
+    setSectorNameError('');
+
+    await handleCreateSector(e, { 
+      defaultConfiguration: newSector.defaultConfiguration, 
+      createConfiguration: newSector.defaultConfiguration 
+    });
+    
+    handleSetTab(sectors[0]?.id || 'NEW');
+  };
+
+  // AUTO-SCROLL COREOGRAFIADO CON ESCUDO DE INMUNIDAD ACTIVO
   const startEditing = (routine) => {
     setLocalError('');
     setConfirmDeleteId(null); 
@@ -190,12 +233,18 @@ export default function ConfigView({ appData }) {
       durationMinutes: routine.durationMinutes
     });
 
-    // Esperamos 160ms a que el acordeón empiece a expandirse para deslizar suavemente la vista
+    // Activamos el escudo para que el rebote no interfiera con el centrado del primero/último
+    isProgrammaticScroll.current = true;
+
     setTimeout(() => {
       const element = routineRefs.current[routine.id];
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
+      // Apagamos el escudo medio segundo después de que termine la animación
+      setTimeout(() => {
+        isProgrammaticScroll.current = false;
+      }, 500);
     }, 160);
   };
 
@@ -231,7 +280,7 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ESTILOS BLINDADOS: Auto-Scroll + Rebote de topes + Tu tiempo de 0.60s */}
+      {/* ESTILOS BLINDADOS: Movimiento fluido + Cero conflictos en topes + Tu tiempo de 0.60s */}
       <style>{`
         .led-wrapper {
           width: 16px;
@@ -323,7 +372,6 @@ export default function ConfigView({ appData }) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        /* CONTENEDOR CON SOMBRAS DINÁMICAS Y MICRO-REBOTE EN TOPES */
         .scroll-shadow-wrapper {
           position: relative;
           border-radius: 16px;
@@ -340,7 +388,7 @@ export default function ConfigView({ appData }) {
           position: absolute;
           left: 0;
           right: 0;
-          height: 16px;
+          height: 14px;
           pointer-events: none;
           z-index: 2;
           transition: opacity 0.25s ease;
@@ -652,7 +700,6 @@ export default function ConfigView({ appData }) {
               {sortedConfigs.length === 0 ? (
                 <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
               ) : (
-                /* CONTENEDOR CON SOMBRAS DINÁMICAS Y MICRO-REBOTE EN TOPES */
                 <div className={`scroll-shadow-wrapper ${scrollShadows.top ? 'show-top' : ''} ${scrollShadows.bottom ? 'show-bottom' : ''} ${edgeBounce === 'top' ? 'bounce-top' : ''} ${edgeBounce === 'bottom' ? 'bounce-bottom' : ''}`}>
                   <div 
                     ref={scrollContainerRef}
@@ -694,7 +741,6 @@ export default function ConfigView({ appData }) {
                             )}
                           </div>
 
-                          {/* ACORDEÓN DE EDICIÓN FLUIDO */}
                           <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
                             <div className="accordion-content">
                               <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
@@ -746,7 +792,6 @@ export default function ConfigView({ appData }) {
                 Nuevas Rutinas
               </span>
               
-              {/* BOTÓN + CON ANIMACIÓN DE NEGACIÓN SI LLEGA AL LÍMITE */}
               <button 
                 type="button"
                 onClick={handleAddRoutineRow}
@@ -864,12 +909,41 @@ export default function ConfigView({ appData }) {
         </div>
       )}
 
+      {/* === CREAR SECTOR (BLINDADO CON VALIDACIÓN FLUIDA Y SIN SALIDAS BRUSCAS) === */}
       {selectedTab === 'NEW' && (
         <div className="glass-panel sector-content-transition">
           <h3 style={{ fontSize: '1.4rem', marginBottom: '6px', fontWeight: '700' }}>Crear Sector</h3>
           <p className="text-muted" style={{ fontSize: '0.95rem', marginBottom: '20px' }}>Agrega una nueva zona de riego</p>
-          <form onSubmit={(e) => { handleCreateSector(e, { defaultConfiguration: newSector.defaultConfiguration, createConfiguration: newSector.defaultConfiguration }); handleSetTab(sectors[0]?.id || 'NEW'); }}>
-            <div className="input-group"><label style={{ fontSize: '0.85rem' }}>Nombre del sector</label><input type="text" value={newSector.name} onChange={e => setNewSector({...newSector, name: e.target.value})} placeholder="Ej. Patio trasero" /></div>
+          
+          <form onSubmit={handleCreateSectorSubmit}>
+            <div className="input-group" style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '0.85rem' }}>Nombre del sector</label>
+              <input 
+                type="text" 
+                value={newSector.name} 
+                onChange={e => {
+                  setNewSector({...newSector, name: e.target.value});
+                  if (sectorNameError) setSectorNameError('');
+                }} 
+                placeholder="Ej. Patio trasero" 
+                className={sectorNameError ? 'input-error' : ''}
+                style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
+              />
+              
+              <div className={`error-message-wrapper ${sectorNameError ? 'show' : ''}`}>
+                <div className="error-message-content">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>{sectorNameError}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="input-group"><label style={{ fontSize: '0.85rem' }}>Descripción</label><input type="text" value={newSector.description} onChange={e => setNewSector({...newSector, description: e.target.value})} placeholder="Ej. Zona de macetas" /></div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 0 0', borderTop: '1px solid var(--surface-border)', paddingTop: '16px' }}>
