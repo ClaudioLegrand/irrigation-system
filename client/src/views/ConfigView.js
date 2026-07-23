@@ -8,7 +8,7 @@ export default function ConfigView({ appData }) {
     newConfiguration, setNewConfiguration,
     handleUpdateRoutine,
     lastSectorId, setLastSectorId, handleToggleAllSectors,
-    handleToggleAllConfigurations // <-- NUEVA FUNCIÓN IMPORTADA
+    handleToggleAllConfigurations
   } = appData;
 
   const [localTab, setLocalTab] = useState(sectors[0]?.id || 'NEW');
@@ -37,21 +37,9 @@ export default function ConfigView({ appData }) {
     cancelEditing(); 
   }, [sectors, selectedTab]);
 
-  useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (e.target.closest('.editing-card')) return;
-      cancelEditing();
-    };
-
-    if (editingRoutineId) {
-      document.addEventListener('mousedown', handleOutsideClick);
-      document.addEventListener('touchstart', handleOutsideClick);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
-    };
-  }, [editingRoutineId]);
+  // CORRECCIÓN PUNTO 3: Eliminamos por completo el useEffect de "clic afuera".
+  // Ahora la edición NUNCA se cerrará sola al tocar el selector de hora del sistema operativo.
+  // Solo se cierra si tú decides tocar "Guardar", "Eliminar" o el botón "✕".
 
   const selectedSectorObj = sectors.find(s => s.id === selectedTab);
   const sectorConfigs = configurations.filter(c => c.sectorId === selectedTab);
@@ -82,7 +70,7 @@ export default function ConfigView({ appData }) {
     setTimeout(() => {
       setRoutineList(prev => prev.filter(r => r.id !== idToRemove));
       setRemovingRowIds(prev => prev.filter(id => id !== idToRemove));
-    }, 300);
+    }, 460);
   };
 
   const handleChangeRoutineRow = (id, field, value) => {
@@ -168,29 +156,33 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ESTILOS BLINDADOS: Garantizan el efecto físico en móviles y PC sin fallar */}
+      {/* ESTILOS BLINDADOS */}
       <style>{`
-        .btn-batch {
+        /* BOTONES MINIMALISTAS DE ÍCONO (Compartidos para Sectores y Rutinas) */
+        .btn-icon-action {
           display: flex;
           align-items: center;
-          gap: 6px;
-          padding: 6px 14px;
-          border-radius: 20px;
-          font-size: 0.8rem;
-          font-weight: 600;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
           cursor: pointer;
           border: 1px solid var(--surface-border);
           background: rgba(255, 255, 255, 0.03);
           color: var(--text-muted);
-          transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease, color 0.15s ease;
+          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
           user-select: none;
           -webkit-tap-highlight-color: transparent;
         }
-        .btn-batch:active {
-          transform: scale(0.88) !important;
+        .btn-icon-action:hover {
+          color: var(--text-main);
+          border-color: var(--text-muted);
+        }
+        .btn-icon-action:active {
+          transform: scale(0.85) !important;
           background: rgba(255, 255, 255, 0.15) !important;
-          color: var(--text-main) !important;
-          border-color: var(--text-main) !important;
+          color: var(--primary) !important;
+          border-color: var(--primary) !important;
         }
         
         .btn-add-pill {
@@ -215,6 +207,16 @@ export default function ConfigView({ appData }) {
           color: #fff !important;
         }
         
+        .list-item-exit {
+          animation: smoothCollapseOut 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+          pointer-events: none;
+        }
+        @keyframes smoothCollapseOut {
+          0% { opacity: 1; max-height: 150px; margin-bottom: 10px; transform: scale(1); }
+          40% { opacity: 0; transform: scale(0.95); }
+          100% { opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border: none; transform: scale(0.9); }
+        }
+
         .animated-row {
           display: flex;
           gap: 8px;
@@ -223,10 +225,10 @@ export default function ConfigView({ appData }) {
           transform-origin: top;
         }
         .row-enter {
-          animation: slideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          animation: slideIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
         }
         .row-exit {
-          animation: slideOut 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
+          animation: slideOut 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
 
         @keyframes slideIn {
@@ -235,34 +237,42 @@ export default function ConfigView({ appData }) {
         }
         @keyframes slideOut {
           0% { opacity: 1; max-height: 85px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
+          40% { opacity: 0; transform: translateY(-5px) scaleY(0.95); }
           100% { opacity: 0; max-height: 0; margin-bottom: 0; transform: translateY(-10px) scaleY(0.8); }
         }
       `}</style>
 
-      {/* === CABECERA DE SECTORES === */}
+      {/* === CABECERA DE SECTORES (Con botones circulares idénticos a Rutinas) === */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {/* TÍTULO ENGRANDECIDO: 1.05rem */}
+          <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Mis Sectores
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button 
               type="button"
-              className="btn-batch"
+              className="btn-icon-action"
               onClick={() => handleToggleAllSectors(true)} 
               title="Habilitar todos los sectores"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              Todos
+              {/* ÍCONO DOBLE CHECK */}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L7 17l-5-5"></path>
+                <path d="m22 10-7.5 7.5L13 16"></path>
+              </svg>
             </button>
             <button 
               type="button"
-              className="btn-batch"
+              className="btn-icon-action"
               onClick={() => handleToggleAllSectors(false)} 
               title="Pausar todos los sectores"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
-              Ninguno
+              {/* ÍCONO CÍRCULO TACHADO */}
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
             </button>
           </div>
         </div>
@@ -305,8 +315,9 @@ export default function ConfigView({ appData }) {
         <>
           <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h3 style={{ fontSize: '1.2rem', color: 'var(--text-main)' }}>{selectedSectorObj.name}</h3>
-              <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '4px' }}>
+              {/* TÍTULO DE SECTOR ENGRANDECIDO: 1.4rem */}
+              <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', fontWeight: '700' }}>{selectedSectorObj.name}</h3>
+              <p className="text-muted" style={{ fontSize: '0.95rem', marginTop: '4px' }}>
                 {selectedSectorObj.description || 'Sin descripción'}
               </p>
             </div>
@@ -335,119 +346,131 @@ export default function ConfigView({ appData }) {
             </div>
           </div>
 
-          {/* === RUTINAS PROGRAMADAS CON BOTONES MASIVOS === */}
-          <div className="glass-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>Rutinas Programadas</h3>
+          {/* === RUTINAS PROGRAMADAS === */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
+              {/* TÍTULO ENGRANDECIDO: 1.05rem */}
+              <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Rutinas Programadas
+              </span>
               
-              {/* BOTONES MASIVOS DE RUTINAS: Solo aparecen si hay rutinas creadas */}
               {sortedConfigs.length > 0 && typeof handleToggleAllConfigurations === 'function' && (
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
                     type="button"
-                    className="btn-batch"
+                    className="btn-icon-action"
                     onClick={() => handleToggleAllConfigurations(selectedTab, true)} 
-                    title="Activar todas las rutinas de este sector"
+                    title="Activar todas las rutinas"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    Todas
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6L7 17l-5-5"></path>
+                      <path d="m22 10-7.5 7.5L13 16"></path>
+                    </svg>
                   </button>
+
                   <button 
                     type="button"
-                    className="btn-batch"
+                    className="btn-icon-action"
                     onClick={() => handleToggleAllConfigurations(selectedTab, false)} 
-                    title="Pausar todas las rutinas de este sector"
+                    title="Pausar todas las rutinas"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
-                    Ninguna
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                    </svg>
                   </button>
                 </div>
               )}
             </div>
             
-            {sortedConfigs.length === 0 ? (
-              <p className="text-muted" style={{ fontSize: '0.9rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {sortedConfigs.map((c) => {
-                  const isEditing = editingRoutineId === c.id;
-                  const isDeleting = deletingIds.includes(c.id);
-                  
-                  return (
-                    <div 
-                      key={c.id} 
-                      className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
-                      style={{ 
-                        background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
-                        opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
-                        transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer'
-                      }}
-                      onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <h4 style={{ fontSize: '1.3rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                            {formatTime(c.startTime)}
-                          </h4>
-                          <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
-                            {c.durationMinutes} minutos
-                          </p>
+            <div className="glass-panel" style={{ padding: '16px' }}>
+              {sortedConfigs.length === 0 ? (
+                <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {sortedConfigs.map((c) => {
+                    const isEditing = editingRoutineId === c.id;
+                    const isDeleting = deletingIds.includes(c.id);
+                    
+                    return (
+                      <div 
+                        key={c.id} 
+                        className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
+                        style={{ 
+                          background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
+                          opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
+                          transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer'
+                        }}
+                        onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            {/* HORA DE RUTINA ENGRANDECIDA: 1.45rem */}
+                            <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                              {formatTime(c.startTime)}
+                            </h4>
+                            <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
+                              {c.durationMinutes} minutos
+                            </p>
+                          </div>
+                          
+                          {isEditing ? (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
+                          ) : (
+                            <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
+                              <span className="switch-toggle__thumb" />
+                            </button>
+                          )}
                         </div>
-                        
-                        {isEditing ? (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
-                        ) : (
-                          <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
-                            <span className="switch-toggle__thumb" />
-                          </button>
-                        )}
-                      </div>
 
-                      <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
-                        <div className="accordion-content">
-                          <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.8rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
-                              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.8rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
-                            </div>
-                            
-                            {localError && <div style={{ color: '#fca5a5', fontSize: '0.8rem' }}>{localError}</div>}
-                            
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                              <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.9rem', margin: 0 }}>Guardar</button>
-                              <button 
-                                type="button" 
-                                onClick={(e) => { 
-                                  e.stopPropagation();
-                                  if (confirmDeleteId === c.id) {
-                                    setDeletingIds(prev => [...prev, c.id]);
-                                    setTimeout(() => { handleDeleteConfiguration(c.id); }, 400);
-                                  } else {
-                                    setConfirmDeleteId(c.id);
-                                  }
-                                }} 
-                                style={{ 
-                                  flex: 1, padding: '12px', fontSize: '0.9rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
-                                  border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
-                                  background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
-                                }}
-                              >
-                                {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
-                              </button>
-                            </div>
-                          </form>
+                        <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
+                          <div className="accordion-content">
+                            <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
+                              <div style={{ display: 'flex', gap: '12px' }}>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
+                              </div>
+                              
+                              {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
+                              
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
+                                <button 
+                                  type="button" 
+                                  onClick={(e) => { 
+                                    e.stopPropagation();
+                                    if (confirmDeleteId === c.id) {
+                                      setDeletingIds(prev => [...prev, c.id]);
+                                      setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
+                                    } else {
+                                      setConfirmDeleteId(c.id);
+                                    }
+                                  }} 
+                                  style={{ 
+                                    flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
+                                    border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                                    background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
+                                  }}
+                                >
+                                  {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* === CREADOR MÚLTIPLE DE RUTINAS === */}
           <div className="glass-panel" style={{ padding: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>Añadir Rutinas</h3>
+              {/* TÍTULO ENGRANDECIDO: 1.25rem */}
+              <h3 style={{ fontSize: '1.25rem', color: 'var(--primary)', fontWeight: '700' }}>Añadir Rutinas</h3>
               
               <button 
                 type="button"
@@ -476,7 +499,7 @@ export default function ConfigView({ appData }) {
                     className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`} 
                   >
                     <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                      {index === 0 && <label style={{ fontSize: '0.75rem', marginBottom: '4px' }}>Hora</label>}
+                      {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Hora</label>}
                       <input 
                         type="time" 
                         value={routine.startTime} 
@@ -486,7 +509,7 @@ export default function ConfigView({ appData }) {
                     </div>
                     
                     <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                      {index === 0 && <label style={{ fontSize: '0.75rem', marginBottom: '4px' }}>Min</label>}
+                      {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Min</label>}
                       <input 
                         type="number" min="5" max="180" 
                         value={routine.durationMinutes} 
@@ -514,7 +537,7 @@ export default function ConfigView({ appData }) {
               <button 
                 type="submit" 
                 className="btn-primary" 
-                style={{ padding: '14px', marginTop: '4px', opacity: isSaving ? 0.7 : 1 }} 
+                style={{ padding: '14px', marginTop: '4px', opacity: isSaving ? 0.7 : 1, fontSize: '1rem' }} 
                 disabled={isSaving}
               >
                 {isSaving ? 'Guardando...' : `Guardar ${routineList.length > 1 ? routineList.length + ' rutinas' : 'rutina'}`}
@@ -526,26 +549,27 @@ export default function ConfigView({ appData }) {
 
       {selectedTab === 'NEW' && (
         <div className="glass-panel">
-          <h3 style={{ fontSize: '1.2rem', marginBottom: '6px' }}>Crear Sector</h3>
-          <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '20px' }}>Agrega una nueva zona de riego</p>
+          {/* TÍTULOS ENGRANDECIDOS */}
+          <h3 style={{ fontSize: '1.4rem', marginBottom: '6px', fontWeight: '700' }}>Crear Sector</h3>
+          <p className="text-muted" style={{ fontSize: '0.95rem', marginBottom: '20px' }}>Agrega una nueva zona de riego</p>
           <form onSubmit={(e) => { handleCreateSector(e, { defaultConfiguration: newSector.defaultConfiguration, createConfiguration: newSector.defaultConfiguration }); handleSetTab(sectors[0]?.id || 'NEW'); }}>
-            <div className="input-group"><label>Nombre del sector</label><input type="text" value={newSector.name} onChange={e => setNewSector({...newSector, name: e.target.value})} placeholder="Ej. Patio trasero" /></div>
-            <div className="input-group"><label>Descripción</label><input type="text" value={newSector.description} onChange={e => setNewSector({...newSector, description: e.target.value})} placeholder="Ej. Zona de macetas" /></div>
+            <div className="input-group"><label style={{ fontSize: '0.85rem' }}>Nombre del sector</label><input type="text" value={newSector.name} onChange={e => setNewSector({...newSector, name: e.target.value})} placeholder="Ej. Patio trasero" /></div>
+            <div className="input-group"><label style={{ fontSize: '0.85rem' }}>Descripción</label><input type="text" value={newSector.description} onChange={e => setNewSector({...newSector, description: e.target.value})} placeholder="Ej. Zona de macetas" /></div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 0 0', borderTop: '1px solid var(--surface-border)', paddingTop: '16px' }}>
-              <div><p style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>Añadir rutina inicial</p></div>
+              <div><p style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '1rem' }}>Añadir rutina inicial</p></div>
               <button type="button" className={`switch-toggle ${newSector.defaultConfiguration ? 'is-on' : 'is-off'}`} onClick={() => setNewSector(prev => ({ ...prev, defaultConfiguration: !prev.defaultConfiguration }))}><span className="switch-toggle__thumb" /></button>
             </div>
             
             <div className={`accordion-wrapper ${newSector.defaultConfiguration ? 'expanded' : ''}`}>
               <div className="accordion-content">
                 <div style={{ display: 'flex', gap: '12px', paddingTop: '16px' }}>
-                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Hora</label><input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} /></div>
-                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
                 </div>
               </div>
             </div>
-            <button type="submit" className="btn-primary" style={{ marginTop: '20px' }}>{newSector.defaultConfiguration ? 'Crear sector y rutina' : 'Crear sector'}</button>
+            <button type="submit" className="btn-primary" style={{ marginTop: '20px', fontSize: '1rem' }}>{newSector.defaultConfiguration ? 'Crear sector y rutina' : 'Crear sector'}</button>
           </form>
         </div>
       )}
