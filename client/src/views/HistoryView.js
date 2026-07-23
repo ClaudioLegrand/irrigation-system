@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function HistoryView(props) {
   const appData = props.appData || props || {};
@@ -9,6 +9,14 @@ export default function HistoryView(props) {
     : (appData.irrigationHistory || appData.history || appData.historial || appData.logs || appData.records || appData.activities || appData.activityLog || appData.registros || props.irrigationHistory || props.history || props.historial || props.logs || props.records || []);
 
   const [expandedId, setExpandedId] = useState(null);
+  const [selectedFilter, setSelectedFilter] = useState('ALL');
+
+  // ESTADOS Y REFERENCIAS PARA LA BARRA HORIZONTAL CON DEGRADÉ Y ESCUDO ANTI-ARRASTRE
+  const [scrollShadows, setScrollShadows] = useState({ left: false, right: false });
+  const tabsScrollRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
 
   useEffect(() => {
     if (typeof appData.fetchHistory === 'function') appData.fetchHistory();
@@ -17,6 +25,64 @@ export default function HistoryView(props) {
     else if (typeof appData.handleFetchHistory === 'function') appData.handleFetchHistory();
     else if (typeof appData.obtenerHistorial === 'function') appData.obtenerHistorial();
   }, []);
+
+  const checkHorizontalScroll = () => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const hasScroll = scrollWidth > clientWidth;
+    const isAtLeft = scrollLeft <= 2;
+    const isAtRight = scrollWidth - scrollLeft - clientWidth <= 2;
+    
+    setScrollShadows({
+      left: !isAtLeft && hasScroll,
+      right: !isAtRight && hasScroll
+    });
+  };
+
+  useEffect(() => {
+    checkHorizontalScroll();
+    const timer = setTimeout(checkHorizontalScroll, 350);
+    return () => clearTimeout(timer);
+  }, [appData.sectors]);
+
+  const handleHorizontalScroll = (e) => {
+    const { scrollLeft, scrollWidth, clientWidth } = e.currentTarget;
+    const hasScroll = scrollWidth > clientWidth;
+    setScrollShadows({
+      left: scrollLeft > 2 && hasScroll,
+      right: scrollWidth - scrollLeft - clientWidth > 2 && hasScroll
+    });
+  };
+
+  // BLINDAJE TÁCTIL TOTAL: Previene cambios de página en el celular y distingue clics de arrastres
+  const handleTouchStart = (e) => {
+    isDraggingRef.current = false;
+    const touch = e.touches ? e.touches[0] : e;
+    startXRef.current = touch.clientX;
+    startYRef.current = touch.clientY;
+  };
+
+  const handleTouchMove = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    const diffX = Math.abs(touch.clientX - startXRef.current);
+    const diffY = Math.abs(touch.clientY - startYRef.current);
+
+    // Si el movimiento es horizontal y mayor a 4px, activamos el escudo anti-clic y frenamos la propagación
+    if (diffX > 4 && diffX > diffY) {
+      isDraggingRef.current = true;
+      if (e.stopPropagation) e.stopPropagation();
+    }
+  };
+
+  const handleFilterClick = (filterId) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      return; // Fue un arrastre: ignoramos el clic
+    }
+    setSelectedFilter(filterId);
+    setExpandedId(null);
+  };
 
   const toggleExpand = (id) => {
     setExpandedId(prev => (prev === id ? null : id));
@@ -43,7 +109,7 @@ export default function HistoryView(props) {
     return 'Sector de Riego';
   };
 
-  // 2. EXTRACTOR DE TIEMPOS QUIRÚRGICO (Compatible con "2026-07-23 16:43:19.960648")
+  // 2. EXTRACTOR DE TIEMPOS QUIRÚRGICO
   const formatDateTime = (rawTime) => {
     if (!rawTime) return { timeShort: '--:--', timeExact: '--:--:--', date: '' };
 
@@ -128,7 +194,7 @@ export default function HistoryView(props) {
     return '1 min';
   };
 
-  // 4. TRADUCTOR DE ORIGEN (origin_order -> "Manual (Aplicación)")
+  // 4. TRADUCTOR DE ORIGEN
   const formatTrigger = (item) => {
     const trigger = item.origin_order || item.originOrder || item.triggerSource || item.trigger_source || item.triggeredBy || item.triggered_by || item.origen || item.source || item.tipo || item.type || 'MANUAL_APP';
     const lower = String(trigger).toLowerCase();
@@ -155,7 +221,7 @@ export default function HistoryView(props) {
     return tB - tA;
   });
 
-  // 5. RADAR CRUZADO DE SECTORES
+  // 5. RADAR CRUZADO DE SECTORES (Para estado PRENDIDO)
   const checkIsActive = (item, index) => {
     if (item.active === true || item.activo === true || item.isRunning === true || item.is_running === true || item.prendido === true) return true;
     if (item.active === false || item.activo === false || item.isRunning === false || item.is_running === false) return false;
@@ -182,9 +248,22 @@ export default function HistoryView(props) {
     return false;
   };
 
+  // 6. FILTRADO FINAL
+  const filteredHistory = sortedHistory.filter(item => {
+    if (selectedFilter === 'ALL') return true;
+    
+    const secObj = getSectorObj(item);
+    if (secObj && String(secObj.id) === String(selectedFilter)) return true;
+    
+    const itemSecName = getSectorName(item);
+    const filterSecObj = appData.sectors?.find(s => String(s.id) === String(selectedFilter));
+    if (filterSecObj && itemSecName === filterSecObj.name) return true;
+    
+    return false;
+  });
+
   return (
-    // TRANSICIÓN DE 0.60s CONSERVADA
-    <div className="history-content-transition" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
       <style>{`
         .history-content-transition {
@@ -195,16 +274,156 @@ export default function HistoryView(props) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        /* TARJETAS CON RELLENO GENEROSO (16px 18px) Y TACTO ELÁSTICO */
-        .history-card {
-          background: rgba(255, 255, 255, 0.03);
-          padding: 16px 18px;
-          border-radius: 16px;
+        /* BARRA HORIZONTAL CON DEGRADÉ SUTIL (0.12) Y BLOQUEO DE GESTOS NATIVOS */
+        .history-filter-layout {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          position: relative;
+          width: 100%;
+          min-width: 0;
+        }
+        
+        /* BOTÓN CIRCULAR MINIMALISTA ("VER TODO" SIN TEXTO) */
+        .btn-circle-all {
+          flex-shrink: 0;
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
           cursor: pointer;
           user-select: none;
           -webkit-tap-highlight-color: transparent;
-          transition: background 0.25s ease, transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+          transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--surface-border, rgba(255,255,255,0.08));
+          color: var(--text-muted, #94a3b8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .btn-circle-all:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--text-main, #ffffff);
+        }
+        .btn-circle-all.active {
+          background: rgba(16, 185, 129, 0.15);
+          border-color: var(--primary, #10b981);
+          color: var(--primary, #10b981);
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+        }
+
+        .carousel-shadow-wrapper {
+          position: relative;
+          flex: 1;
+          min-width: 0;
+          display: flex;
+        }
+        .carousel-shadow-wrapper::before, .carousel-shadow-wrapper::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 16px;
+          pointer-events: none;
+          z-index: 5;
+          transition: opacity 0.25s ease;
+        }
+        /* SOMBRAS ULTRA-SUTILES (rgba 0.12) */
+        .carousel-shadow-wrapper::before {
+          left: 0;
+          background: linear-gradient(to right, rgba(0,0,0,0.12), transparent);
+          opacity: 0;
+        }
+        .carousel-shadow-wrapper::after {
+          right: 0;
+          background: linear-gradient(to left, rgba(0,0,0,0.12), transparent);
+          opacity: 0;
+        }
+        .carousel-shadow-wrapper.show-left::before { opacity: 1; }
+        .carousel-shadow-wrapper.show-right::after { opacity: 1; }
+
+        /* BLINDAJE NATíVO PARA CELULAR: overscroll-behavior-x y touch-action */
+        .filter-scroll-area {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          overflow-x: auto;
+          overscroll-behavior-x: contain;
+          touch-action: pan-x;
+          -webkit-overflow-scrolling: touch;
+          padding: 2px 4px 2px 0;
+          scrollbar-width: none;
+          flex: 1;
+        }
+        .filter-scroll-area::-webkit-scrollbar {
+          display: none;
+        }
+        .filter-chip {
+          flex-shrink: 0;
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 700;
+          cursor: pointer;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--surface-border, rgba(255,255,255,0.08));
+          color: var(--text-muted, #94a3b8);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          max-width: 180px;
+        }
+        .filter-chip.active {
+          background: rgba(16, 185, 129, 0.12);
+          border-color: var(--primary, #10b981);
+          color: var(--primary, #10b981);
+        }
+        .filter-chip-text {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .led-wrapper {
+          width: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .led-ring {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          transition: all 0.25s ease;
+        }
+        .led-ring.active {
+          background: var(--primary, #10b981);
+          box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+        }
+        .led-ring.paused {
+          background: transparent;
+          border: 1.5px solid var(--text-muted, #64748b);
+          opacity: 0.6;
+        }
+
+        /* ULTRA LOW-PROFILE: Altura mínima al cerrar (9px 14px), respira al abrir (14px 14px) */
+        .history-card {
+          background: rgba(255, 255, 255, 0.03);
+          padding: 9px 14px;
+          border-radius: 14px;
+          cursor: pointer;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          transition: padding 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.25s ease, transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease;
           border-left: 4px solid var(--text-muted, #64748b);
+        }
+        .history-card.is-open {
+          padding: 14px 14px;
+          background: rgba(255, 255, 255, 0.05);
         }
         .history-card:hover {
           background: rgba(255, 255, 255, 0.06);
@@ -216,10 +435,9 @@ export default function HistoryView(props) {
         }
         .history-card.is-active {
           border-left-color: var(--primary, #10b981);
-          background: rgba(255, 255, 255, 0.05);
         }
 
-        /* ACORDEÓN FLUIDO (CSS Grid 0fr -> 1fr en 400ms) */
+        /* ACORDEÓN FLUIDO */
         .history-accordion {
           display: grid;
           grid-template-rows: 0fr;
@@ -234,12 +452,12 @@ export default function HistoryView(props) {
         .history-accordion-content {
           min-height: 0;
           overflow: hidden;
-          padding-top: 14px;
+          padding-top: 10px;
           border-top: 1px solid rgba(255, 255, 255, 0.08);
-          margin-top: 14px;
+          margin-top: 10px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 6px;
         }
 
         .flex-shrink-zero {
@@ -251,7 +469,7 @@ export default function HistoryView(props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 4px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Historial de Riego {sortedHistory.length > 0 && <span style={{ color: 'var(--primary, #10b981)', fontWeight: '800' }}>({sortedHistory.length})</span>}
+            Historial de Riego {filteredHistory.length > 0 && <span style={{ color: 'var(--primary, #10b981)', fontWeight: '800' }}>({filteredHistory.length})</span>}
           </span>
         </div>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>
@@ -259,20 +477,77 @@ export default function HistoryView(props) {
         </p>
       </div>
 
-      {/* === CONTENEDOR PRINCIPAL GLASS-PANEL === */}
-      <div className="glass-panel" style={{ padding: '16px' }}>
-        {sortedHistory.length === 0 ? (
+      {/* === BARRA HORIZONTAL (BOTÓN CIRCULAR + CARRUSEL BLINDADO) === */}
+      <div className="history-filter-layout">
+        
+        {/* BOTÓN CIRCULAR MINIMALISTA: VER TODO */}
+        <button
+          type="button"
+          className={`btn-circle-all ${selectedFilter === 'ALL' ? 'active' : ''}`}
+          onClick={() => handleFilterClick('ALL')}
+          title="Mostrar todo el historial"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+        </button>
+
+        {/* CARRUSEL CON SOMBRAS SUTILES (0.12) Y BLOQUEO NATíVO ANTI-PÁGINA */}
+        <div className={`carousel-shadow-wrapper ${scrollShadows.left ? 'show-left' : ''} ${scrollShadows.right ? 'show-right' : ''}`}>
+          <div
+            ref={tabsScrollRef}
+            className="filter-scroll-area"
+            onScroll={handleHorizontalScroll}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onMouseDown={handleTouchStart}
+            onMouseMove={handleTouchMove}
+          >
+            {(appData.sectors || []).map(sector => {
+              const isSelected = String(selectedFilter) === String(sector.id);
+              const st = sector.current_state || sector.currentState || sector.status || sector.state || sector.estado || sector.activo;
+              const isRunning = (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
+
+              return (
+                <button
+                  key={sector.id}
+                  type="button"
+                  className={`filter-chip ${isSelected ? 'active' : ''}`}
+                  onClick={() => handleFilterClick(sector.id)}
+                  title={`Filtrar por ${sector.name}`}
+                >
+                  <span className="led-wrapper">
+                    <span className={`led-ring ${isRunning ? 'active' : 'paused'}`}></span>
+                  </span>
+                  <span className="filter-chip-text">{sector.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* === CONTENEDOR PRINCIPAL GLASS-PANEL (Separación compacta de 6px) === */}
+      <div key={selectedFilter} className="glass-panel history-content-transition" style={{ padding: '12px 14px' }}>
+        {filteredHistory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '28px 10px' }}>
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted, #64748b)', opacity: 0.5, margin: '0 auto 8px auto', display: 'block' }}>
               <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
             </svg>
             <p className="text-muted" style={{ fontSize: '0.95rem', margin: 0 }}>
-              No hay registros de actividad recientes en la base de datos.
+              {selectedFilter === 'ALL' 
+                ? 'No hay registros de actividad recientes en la base de datos.' 
+                : 'No hay actividad registrada para este sector.'}
             </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {sortedHistory.map((item, index) => {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {filteredHistory.map((item, index) => {
               const itemId = item.id || item._id || item.logId || index;
               const isExpanded = expandedId === itemId;
               const isActive = checkIsActive(item, index);
@@ -286,25 +561,25 @@ export default function HistoryView(props) {
               return (
                 <div 
                   key={itemId}
-                  className={`history-card ${isActive ? 'is-active' : ''}`}
+                  className={`history-card ${isActive ? 'is-active' : ''} ${isExpanded ? 'is-open' : ''}`}
                   onClick={() => toggleExpand(itemId)}
                 >
-                  {/* === VISTA COMPACTA MINIMALISTA (CERO DESBORDES) === */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {/* === VISTA COMPACTA ULTRA LOW-PROFILE (Separación mínima de 1px) === */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                     
-                    {/* FILA 1: Nombre del Sector + Pastilla de Estado */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                      <h4 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-main, #ffffff)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                    {/* FILA 1: Nombre del Sector (1.05rem) + Pastilla de Estado */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                      <h4 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main, #ffffff)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
                         {sectorTitle}
                       </h4>
 
-                      {/* PASTILLA BLINDADA (minWidth 115px) + FLECHA DESPLEGABLE */}
-                      <div className="flex-shrink-zero" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* PASTILLA BLINDADA + FLECHA DESPLEGABLE */}
+                      <div className="flex-shrink-zero" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <div style={{
-                          minWidth: '115px',
-                          padding: '6px 12px',
+                          minWidth: '110px',
+                          padding: '4px 10px',
                           borderRadius: '20px',
-                          fontSize: '0.75rem',
+                          fontSize: '0.72rem',
                           fontWeight: '700',
                           letterSpacing: '0.5px',
                           border: `1px solid ${isActive ? 'var(--primary, #10b981)' : 'rgba(255, 255, 255, 0.12)'}`,
@@ -313,11 +588,11 @@ export default function HistoryView(props) {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '6px',
+                          gap: '5px',
                           transition: 'all 0.3s ease'
                         }}>
                           <span style={{
-                            width: '7px', height: '7px', borderRadius: '50%',
+                            width: '6px', height: '6px', borderRadius: '50%',
                             background: isActive ? 'var(--primary, #10b981)' : 'var(--text-muted, #64748b)',
                             boxShadow: isActive ? '0 0 6px rgba(16, 185, 129, 0.8)' : 'none',
                             transition: 'all 0.3s ease'
@@ -325,32 +600,31 @@ export default function HistoryView(props) {
                           <span>{isActive ? 'PRENDIDO' : 'FINALIZADO'}</span>
                         </div>
 
-                        {/* FLECHA DESPLEGABLE SUAVE */}
+                        {/* FLECHA DESPLEGABLE */}
                         <div style={{
-                          width: '24px', height: '24px', borderRadius: '50%',
+                          width: '22px', height: '22px', borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: 'var(--text-muted, #94a3b8)', transition: 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)',
                           transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
                         }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="6 9 12 15 18 9"></polyline>
                           </svg>
                         </div>
                       </div>
                     </div>
 
-                    {/* FILA 2: Resumen Temporal Limpio (IMPOSIBLE DE ROMPER HORIZONTALMENTE) */}
-                    <div style={{ fontSize: '0.88rem', color: 'var(--text-muted, #94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {/* FILA 2: Resumen Temporal Limpio (0.82rem, protegido con nowrap) */}
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted, #94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {startData.date ? `${startData.date} • ` : ''}<strong style={{ color: 'var(--text-main, #ffffff)', fontWeight: '600' }}>{startData.timeShort} hs</strong>
                     </div>
 
                   </div>
 
-                  {/* === VISTA EXPANDIDA (FICHA TÉCNICA DE AUDITORÍA COMPLETA) === */}
+                  {/* === VISTA EXPANDIDA (FICHA TÉCNICA DE AUDITORÍA) === */}
                   <div className={`history-accordion ${isExpanded ? 'expanded' : ''}`}>
                     <div className="history-accordion-content">
                       
-                      {/* INICIO EXACTO */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                         <span className="text-muted" style={{ color: 'var(--text-muted, #94a3b8)' }}>Inicio exacto:</span>
                         <span style={{ fontWeight: '600', color: 'var(--text-main, #ffffff)' }}>
@@ -358,7 +632,6 @@ export default function HistoryView(props) {
                         </span>
                       </div>
 
-                      {/* FIN EXACTO O INDICADOR EN CURSO */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                         <span className="text-muted" style={{ color: 'var(--text-muted, #94a3b8)' }}>Fin de riego:</span>
                         {isActive ? (
@@ -373,19 +646,16 @@ export default function HistoryView(props) {
                         )}
                       </div>
 
-                      {/* DURACIÓN TOTAL */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                         <span className="text-muted" style={{ color: 'var(--text-muted, #94a3b8)' }}>Tiempo total:</span>
                         <span style={{ fontWeight: '600', color: 'var(--text-main, #ffffff)' }}>{durationText}</span>
                       </div>
 
-                      {/* ORIGEN DE ORDEN */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                         <span className="text-muted" style={{ color: 'var(--text-muted, #94a3b8)' }}>Origen de orden:</span>
                         <span style={{ fontWeight: '600', color: 'var(--primary, #10b981)' }}>{triggerText}</span>
                       </div>
 
-                      {/* OBSERVACIONES / NOTAS */}
                       {(item.observations || item.observaciones || item.notes || item.notas) && (
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '8px', marginTop: '2px' }}>
                           <span className="text-muted" style={{ color: 'var(--text-muted, #94a3b8)' }}>Nota del sistema:</span>
