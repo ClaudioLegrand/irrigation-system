@@ -30,16 +30,18 @@ export default function ConfigView({ appData }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
 
+  // 1. Verificación de seguridad por si el sector actual se elimina de la base de datos
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
       handleSetTab(sectors[0]?.id || 'NEW');
     }
-    cancelEditing(); 
   }, [sectors, selectedTab]);
 
-  // CORRECCIÓN PUNTO 3: Eliminamos por completo el useEffect de "clic afuera".
-  // Ahora la edición NUNCA se cerrará sola al tocar el selector de hora del sistema operativo.
-  // Solo se cierra si tú decides tocar "Guardar", "Eliminar" o el botón "✕".
+  // 2. CORRECCIÓN DEFINITIVA DE UX: cancelEditing ÚNICAMENTE cuando cambias voluntariamente de pestaña.
+  // Ningún refresco de fondo del servidor ni actualización de datos podrá cerrarte la tarjeta mientras eliges la hora.
+  useEffect(() => {
+    cancelEditing();
+  }, [selectedTab]);
 
   const selectedSectorObj = sectors.find(s => s.id === selectedTab);
   const sectorConfigs = configurations.filter(c => c.sectorId === selectedTab);
@@ -156,9 +158,121 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ESTILOS BLINDADOS */}
+      {/* ESTILOS BLINDADOS: Defensas Anti-Desbordes + Acordeón Fluido + Tu tiempo de 0.60s */}
       <style>{`
-        /* BOTONES MINIMALISTAS DE ÍCONO (Compartidos para Sectores y Rutinas) */
+        /* ANILLO LED UNIFICADO */
+        .led-wrapper {
+          width: 16px;
+          min-width: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .led-ring {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          transition: all 0.25s ease;
+          box-sizing: border-box;
+        }
+        .led-ring.active {
+          background: var(--primary);
+          border: none;
+          box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        }
+        .led-ring.paused {
+          background: transparent;
+          border: 1.5px solid var(--text-muted);
+          opacity: 0.6;
+        }
+
+        /* ESCUDO 1: Prohibido encoger el botón de crear sector (+) */
+        .btn-fixed-new {
+          flex-shrink: 0 !important;
+          border: 1.5px dashed rgba(255, 255, 255, 0.35) !important;
+          background: rgba(255, 255, 255, 0.07) !important;
+          color: var(--text-main) !important;
+          transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+        }
+        .btn-fixed-new:hover, .btn-fixed-new.active {
+          border: 1.5px solid var(--primary) !important;
+          background: rgba(16, 185, 129, 0.15) !important;
+          color: var(--primary) !important;
+        }
+
+        /* ESCUDO 2: Truncamiento en Pestañas (Puntos suspensivos) */
+        .chip {
+          flex-shrink: 0;
+          max-width: 180px;
+        }
+        .chip-text {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: inline-block;
+          vertical-align: middle;
+        }
+
+        /* ESCUDO 3: Título gigante protegido (Máximo 2 renglones limpios) */
+        .card-title-shield {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          font-size: 1.4rem;
+          color: var(--text-main);
+          font-weight: 700;
+          line-height: 1.25;
+        }
+
+        /* ESCUDO 4: Inmunidad para la pastilla de estado y controles */
+        .flex-shrink-zero {
+          flex-shrink: 0 !important;
+        }
+
+        /* TARJETA INTERACTIVA */
+        .interactive-card {
+          cursor: pointer;
+          transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease, border-color 0.15s ease;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .interactive-card:active {
+          transform: scale(0.98) !important;
+        }
+
+        /* TRANSICIÓN CALMA Y ELEGANTE (0.60s CONSERVADO SEGÚN TU ELECCIÓN) */
+        .sector-content-transition {
+          animation: slideFadeIn 0.60s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+        @keyframes slideFadeIn {
+          0% { opacity: 0; transform: translateY(8px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ACORDEÓN DE EDICIÓN FLUIDO (CSS Grid 0fr -> 1fr en 450ms) */
+        .accordion-wrapper {
+          display: grid;
+          grid-template-rows: 0fr;
+          transition: grid-template-rows 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+          opacity: 0;
+          overflow: hidden;
+        }
+        .accordion-wrapper.expanded {
+          grid-template-rows: 1fr;
+          opacity: 1;
+        }
+        .accordion-content {
+          min-height: 0;
+          overflow: hidden;
+        }
+
         .btn-icon-action {
           display: flex;
           align-items: center;
@@ -242,10 +356,9 @@ export default function ConfigView({ appData }) {
         }
       `}</style>
 
-      {/* === CABECERA DE SECTORES (Con botones circulares idénticos a Rutinas) === */}
+      {/* === CABECERA DE SECTORES === */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
-          {/* TÍTULO ENGRANDECIDO: 1.05rem */}
           <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Mis Sectores
           </span>
@@ -256,7 +369,6 @@ export default function ConfigView({ appData }) {
               onClick={() => handleToggleAllSectors(true)} 
               title="Habilitar todos los sectores"
             >
-              {/* ÍCONO DOBLE CHECK */}
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 6L7 17l-5-5"></path>
                 <path d="m22 10-7.5 7.5L13 16"></path>
@@ -268,7 +380,6 @@ export default function ConfigView({ appData }) {
               onClick={() => handleToggleAllSectors(false)} 
               title="Pausar todos los sectores"
             >
-              {/* ÍCONO CÍRCULO TACHADO */}
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
@@ -295,52 +406,69 @@ export default function ConfigView({ appData }) {
             onTouchMove={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            {sectors.filter(s => s.enabled).map(sector => (
-              <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center' }}>
-                <span className="icon-active-dot"></span>{sector.name}
-              </button>
-            ))}
-            
-            {sectors.filter(s => !s.enabled).map(sector => (
-              <button key={sector.id} className={`chip ${selectedTab === sector.id ? 'active' : ''}`} onClick={() => handleSetTab(sector.id)} style={{ display: 'flex', alignItems: 'center', opacity: selectedTab === sector.id ? 1 : 0.6 }}>
-                <svg className="icon-paused" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
-                {sector.name}
-              </button>
-            ))}
+            {sectors.map(sector => {
+              const isEnabled = sector.enabled !== false;
+              const isSelected = selectedTab === sector.id;
+              return (
+                <button 
+                  key={sector.id} 
+                  className={`chip ${isSelected ? 'active' : ''}`} 
+                  onClick={() => handleSetTab(sector.id)} 
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                  title={sector.name}
+                >
+                  <span className="led-wrapper">
+                    <span className={`led-ring ${isEnabled ? 'active' : 'paused'}`}></span>
+                  </span>
+                  <span className="chip-text">{sector.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
+      {/* CONTENEDOR CON TRANSICIÓN SUAVE */}
       {selectedTab !== 'NEW' && selectedSectorObj && (
-        <>
-          <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              {/* TÍTULO DE SECTOR ENGRANDECIDO: 1.4rem */}
-              <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', fontWeight: '700' }}>{selectedSectorObj.name}</h3>
-              <p className="text-muted" style={{ fontSize: '0.95rem', marginTop: '4px' }}>
+        <div key={selectedTab} className="sector-content-transition">
+          
+          {/* TARJETA PRINCIPAL INTERACTIVA Y BLINDADA */}
+          <div 
+            className="glass-panel interactive-card" 
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '84px', gap: '16px' }}
+            onClick={() => handleToggleSector(selectedSectorObj)}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h3 className="card-title-shield" title={selectedSectorObj.name}>
+                {selectedSectorObj.name}
+              </h3>
+              <p className="text-muted" style={{ fontSize: '0.95rem', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {selectedSectorObj.description || 'Sin descripción'}
               </p>
             </div>
             
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+            <div className="flex-shrink-zero">
               {(() => {
                 const isSectorEnabled = selectedSectorObj.enabled !== false;
                 return (
-                  <>
-                    <button type="button" className={`switch-toggle ${isSectorEnabled ? 'is-on' : 'is-off'}`} onClick={() => handleToggleSector(selectedSectorObj)}>
-                      <span className="switch-toggle__thumb" />
-                    </button>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: isSectorEnabled ? 'var(--primary)' : 'var(--text-muted)' }}>
-                        {isSectorEnabled ? 'HABILITADO' : 'DESHABILITADO'}
-                      </div>
-                      {!isSectorEnabled && (
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px', opacity: 0.8 }}>
-                          (Rutinas pausadas)
-                        </div>
-                      )}
-                    </div>
-                  </>
+                  <div style={{
+                    minWidth: '115px', 
+                    padding: '8px 14px',
+                    borderRadius: '20px',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    letterSpacing: '0.5px',
+                    border: `1px solid ${isSectorEnabled ? 'var(--primary)' : 'var(--surface-border)'}`,
+                    background: isSectorEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                    color: isSectorEnabled ? 'var(--primary)' : 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}>
+                    <span className={`led-ring ${isSectorEnabled ? 'active' : 'paused'}`}></span>
+                    <span>{isSectorEnabled ? 'ACTIVO' : 'PAUSADO'}</span>
+                  </div>
                 );
               })()}
             </div>
@@ -349,7 +477,6 @@ export default function ConfigView({ appData }) {
           {/* === RUTINAS PROGRAMADAS === */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
-              {/* TÍTULO ENGRANDECIDO: 1.05rem */}
               <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Rutinas Programadas
               </span>
@@ -359,7 +486,7 @@ export default function ConfigView({ appData }) {
                   <button 
                     type="button"
                     className="btn-icon-action"
-                    onClick={() => handleToggleAllConfigurations(selectedTab, true)} 
+                    onClick={(e) => { e.stopPropagation(); handleToggleAllConfigurations(selectedTab, true); }} 
                     title="Activar todas las rutinas"
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -371,7 +498,7 @@ export default function ConfigView({ appData }) {
                   <button 
                     type="button"
                     className="btn-icon-action"
-                    onClick={() => handleToggleAllConfigurations(selectedTab, false)} 
+                    onClick={(e) => { e.stopPropagation(); handleToggleAllConfigurations(selectedTab, false); }} 
                     title="Pausar todas las rutinas"
                   >
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -405,7 +532,6 @@ export default function ConfigView({ appData }) {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
-                            {/* HORA DE RUTINA ENGRANDECIDA: 1.45rem */}
                             <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
                               {formatTime(c.startTime)}
                             </h4>
@@ -423,6 +549,7 @@ export default function ConfigView({ appData }) {
                           )}
                         </div>
 
+                        {/* ACORDEÓN DE EDICIÓN CON CSS GRID FLUIDO (450ms) */}
                         <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
                           <div className="accordion-content">
                             <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
@@ -469,7 +596,6 @@ export default function ConfigView({ appData }) {
           {/* === CREADOR MÚLTIPLE DE RUTINAS === */}
           <div className="glass-panel" style={{ padding: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              {/* TÍTULO ENGRANDECIDO: 1.25rem */}
               <h3 style={{ fontSize: '1.25rem', color: 'var(--primary)', fontWeight: '700' }}>Añadir Rutinas</h3>
               
               <button 
@@ -544,12 +670,11 @@ export default function ConfigView({ appData }) {
               </button>
             </form>
           </div>
-        </>
+        </div>
       )}
 
       {selectedTab === 'NEW' && (
-        <div className="glass-panel">
-          {/* TÍTULOS ENGRANDECIDOS */}
+        <div className="glass-panel sector-content-transition">
           <h3 style={{ fontSize: '1.4rem', marginBottom: '6px', fontWeight: '700' }}>Crear Sector</h3>
           <p className="text-muted" style={{ fontSize: '0.95rem', marginBottom: '20px' }}>Agrega una nueva zona de riego</p>
           <form onSubmit={(e) => { handleCreateSector(e, { defaultConfiguration: newSector.defaultConfiguration, createConfiguration: newSector.defaultConfiguration }); handleSetTab(sectors[0]?.id || 'NEW'); }}>
