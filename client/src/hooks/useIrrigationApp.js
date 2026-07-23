@@ -133,6 +133,53 @@ export function useIrrigationApp() {
     }
   };
 
+  // Agrégalo cerca de handleToggleAllSectors
+  const handleToggleAllConfigurations = async (sectorId, enableAll) => {
+    // 1. Buscamos todas las rutinas que pertenecen al sector seleccionado
+    const sectorConfigs = configurations.filter(c => c.sectorId === sectorId);
+    if (sectorConfigs.length === 0) return;
+
+    // 2. Optimistic UI: Actualizamos la pantalla instantáneamente
+    setConfigurations(prev => prev.map(c => 
+      c.sectorId === sectorId ? { ...c, enabled: enableAll } : c
+    ));
+
+    // 3. Formateamos el payload tal como lo espera tu DTO en Java
+    const payload = sectorConfigs.map(c => {
+      let timeStr = c.startTime;
+      if (typeof timeStr !== 'string') {
+        const h = String(timeStr?.hour || 0).padStart(2, '0');
+        const m = String(timeStr?.minute || 0).padStart(2, '0');
+        timeStr = `${h}:${m}`;
+      }
+      return {
+        sectorId: c.sectorId,
+        startTime: timeStr,
+        durationMinutes: Number(c.durationMinutes),
+        enabled: enableAll
+      };
+    });
+
+    try {
+      // 4. Enviamos el PUT masivo a tu endpoint en Java
+      const response = await fetch('http://localhost:8080/api/configurations/list', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al actualizar las rutinas');
+      }
+
+      setMessage(enableAll ? 'Todas las rutinas activadas' : 'Rutinas pausadas en este sector');
+    } catch (error) {
+      console.error(error);
+      setMessage('Error de conexión al modificar rutinas');
+      loadData(); // Revertimos los cambios visuales si falla el servidor
+    }
+  };
+
   const handleCreateSector = useCallback(async (event, options = {}) => {
     event.preventDefault();
 
@@ -182,29 +229,31 @@ export function useIrrigationApp() {
     }
   }, [loadData, newConfiguration, newSector]);
 
-  const handleSaveConfiguration = useCallback(async (payload) => {
+  const handleSaveConfigurationsBatch = useCallback(async (routinesArray) => {
+    // routinesArray es una lista con formato: [{ sectorId, startTime, durationMinutes, enabled }, ...]
     try {
-      // Mandamos a guardar/crear al backend
-      const savedConfig = await createConfiguration(payload);
-      
-      setConfigurations((prev) => {
-        // ESCUDO: Verificamos si el backend nos devolvió un ID que ya tenemos en pantalla
-        const exists = prev.some((c) => c.id === savedConfig.id);
-        
-        if (exists) {
-          // Si el ID ya existe, lo actualizamos (pisamos el viejo) para evitar el error de "misma key"
-          return prev.map((c) => (c.id === savedConfig.id ? savedConfig : c));
-        } else {
-          // Si es un ID nuevo, lo agregamos a la lista
-          return [...prev, savedConfig];
-        }
+      // 1. Enviamos la lista al backend usando tu nuevo endpoint "list"
+      const response = await fetch('http://localhost:8080/api/configurations/list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(routinesArray)
       });
+
+      if (!response.ok) {
+        throw new Error('Error al guardar las rutinas');
+      }
+
+      // 2. Si el backend responde OK (200), refrescamos los datos visuales
+      setMessage(routinesArray.length > 1 ? `${routinesArray.length} rutinas guardadas` : 'Rutina guardada');
+      await loadData(); 
       
-      setMessage('Rutina programada');
+      return true; // Retornamos true para avisarle al formulario que puede limpiarse
     } catch (error) {
-      setMessage(error.message || 'Error al guardar la rutina');
+      console.error(error);
+      setMessage(error.message || 'Error al guardar las rutinas');
+      return false;
     }
-  }, []);
+  }, [loadData]);
 
   const handleToggleConfiguration = useCallback(async (config) => {
     try {
@@ -255,13 +304,14 @@ export function useIrrigationApp() {
       handleToggleMain,
       handleToggleSector,
       handleCreateSector,
-      handleSaveConfiguration,
+      handleSaveConfigurationsBatch,
       handleToggleConfiguration,
       handleDeleteConfiguration,
       handleUpdateRoutine,
       handleToggleAllSectors,
+      handleToggleAllConfigurations,
     }),
-    [configurations, handleCreateSector, handleSaveConfiguration, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors]
+    [configurations, handleCreateSector, handleSaveConfigurationsBatch, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors, handleToggleAllConfigurations]
   );
 
   return value;
