@@ -22,23 +22,26 @@ export default function ConfigView({ appData }) {
   const [localError, setLocalError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
-  const [routineList, setRoutineList] = useState([{ id: Date.now(), startTime: '', durationMinutes: 15 }]);
+  // ESTADO DE RUTINAS Y LÍMITE CON REBOTE
+  const MAX_ROUTINES = 6;
+  const [routineList, setRoutineList] = useState([
+    { id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }
+  ]);
   const [removingRowIds, setRemovingRowIds] = useState([]);
+  const [isAtLimitShake, setIsAtLimitShake] = useState(false);
 
   const [editingRoutineId, setEditingRoutineId] = useState(null);
   const [editData, setEditData] = useState({ startTime: '', durationMinutes: 15 });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
 
-  // 1. Verificación de seguridad por si el sector actual se elimina de la base de datos
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
       handleSetTab(sectors[0]?.id || 'NEW');
     }
   }, [sectors, selectedTab]);
 
-  // 2. CORRECCIÓN DEFINITIVA DE UX: cancelEditing ÚNICAMENTE cuando cambias voluntariamente de pestaña.
-  // Ningún refresco de fondo del servidor ni actualización de datos podrá cerrarte la tarjeta mientras eliges la hora.
+  // La edición solo se cierra al cambiar voluntariamente de pestaña
   useEffect(() => {
     cancelEditing();
   }, [selectedTab]);
@@ -60,25 +63,40 @@ export default function ConfigView({ appData }) {
     return timeA.localeCompare(timeB);
   });
 
+  // AÑADIR CON LÍMITE Y REBOTE FÍSICO DE NEGACIÓN
   const handleAddRoutineRow = () => {
-    setRoutineList(prev => [...prev, { id: Date.now(), startTime: '', durationMinutes: 15 }]);
+    if (routineList.length >= MAX_ROUTINES) {
+      setIsAtLimitShake(true);
+      setTimeout(() => setIsAtLimitShake(false), 450);
+      return;
+    }
+    setRoutineList(prev => [
+      ...prev, 
+      { id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }
+    ]);
   };
 
+  // ELIMINACIÓN CON SALIDA LÍQUIDA SINCRONIZADA
   const handleRemoveRoutineRow = (idToRemove) => {
     if (routineList.length === 1) return; 
     
     setRemovingRowIds(prev => [...prev, idToRemove]);
     
+    // Sincronizado milimétricamente con los 420ms del CSS
     setTimeout(() => {
       setRoutineList(prev => prev.filter(r => r.id !== idToRemove));
       setRemovingRowIds(prev => prev.filter(id => id !== idToRemove));
-    }, 460);
+    }, 420);
   };
 
   const handleChangeRoutineRow = (id, field, value) => {
-    setRoutineList(prev => prev.map(r => 
-      r.id === id ? { ...r, [field]: value } : r
-    ));
+    setRoutineList(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      if (field === 'startTime') updated.errorTime = '';
+      if (field === 'durationMinutes') updated.errorDuration = '';
+      return updated;
+    }));
   };
 
   const onSaveBatchConfig = async (e) => {
@@ -86,21 +104,43 @@ export default function ConfigView({ appData }) {
     if (isSaving) return;
     setLocalError('');
 
-    if (routineList.some(r => !r.startTime)) {
-      setLocalError('Por favor, completa todas las horas.');
+    let hasErrors = false;
+    const seenTimes = new Set();
+
+    const validatedList = routineList.map(r => {
+      let errTime = '';
+      let errDur = '';
+
+      if (!r.startTime) {
+        errTime = 'Elige una hora';
+        hasErrors = true;
+      } else {
+        const isDuplicateExisting = sectorConfigs.some(c => formatTime(c.startTime) === r.startTime);
+        const isDuplicateBatch = seenTimes.has(r.startTime);
+
+        if (isDuplicateExisting || isDuplicateBatch) {
+          errTime = 'Horario repetido';
+          hasErrors = true;
+        } else {
+          seenTimes.add(r.startTime);
+        }
+      }
+
+      const dur = Number(r.durationMinutes);
+      if (!r.durationMinutes || dur < 5 || dur > 180) {
+        errDur = 'Mín. 5 - Máx. 180 min';
+        hasErrors = true;
+      }
+
+      return { ...r, errorTime: errTime, errorDuration: errDur };
+    });
+
+    if (hasErrors) {
+      setRoutineList(validatedList);
       return;
     }
 
-    const duplicateError = routineList.find(newRoutine => 
-      sectorConfigs.some(existingConfig => formatTime(existingConfig.startTime) === newRoutine.startTime)
-    );
-
-    if (duplicateError) {
-      setLocalError(`Ya existe una rutina programada a las ${duplicateError.startTime}.`);
-      return;
-    }
-
-    const payload = routineList.map(r => ({
+    const payload = validatedList.map(r => ({
       sectorId: selectedTab,
       startTime: r.startTime,
       durationMinutes: Number(r.durationMinutes),
@@ -110,7 +150,7 @@ export default function ConfigView({ appData }) {
     setIsSaving(true);
     try {
       await handleSaveConfigurationsBatch(payload);
-      setRoutineList([{ id: Date.now(), startTime: '', durationMinutes: 15 }]);
+      setRoutineList([{ id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }]);
     } finally {
       setIsSaving(false);
     }
@@ -158,9 +198,8 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ESTILOS BLINDADOS: Defensas Anti-Desbordes + Acordeón Fluido + Tu tiempo de 0.60s */}
+      {/* ESTILOS BLINDADOS: Salida líquida + Rebote elástico + Tu tiempo de 0.60s */}
       <style>{`
-        /* ANILLO LED UNIFICADO */
         .led-wrapper {
           width: 16px;
           min-width: 16px;
@@ -187,7 +226,6 @@ export default function ConfigView({ appData }) {
           opacity: 0.6;
         }
 
-        /* ESCUDO 1: Prohibido encoger el botón de crear sector (+) */
         .btn-fixed-new {
           flex-shrink: 0 !important;
           border: 1.5px dashed rgba(255, 255, 255, 0.35) !important;
@@ -201,7 +239,6 @@ export default function ConfigView({ appData }) {
           color: var(--primary) !important;
         }
 
-        /* ESCUDO 2: Truncamiento en Pestañas (Puntos suspensivos) */
         .chip {
           flex-shrink: 0;
           max-width: 180px;
@@ -214,7 +251,6 @@ export default function ConfigView({ appData }) {
           vertical-align: middle;
         }
 
-        /* ESCUDO 3: Título gigante protegido (Máximo 2 renglones limpios) */
         .card-title-shield {
           display: -webkit-box;
           -webkit-line-clamp: 2;
@@ -228,12 +264,10 @@ export default function ConfigView({ appData }) {
           line-height: 1.25;
         }
 
-        /* ESCUDO 4: Inmunidad para la pastilla de estado y controles */
         .flex-shrink-zero {
           flex-shrink: 0 !important;
         }
 
-        /* TARJETA INTERACTIVA */
         .interactive-card {
           cursor: pointer;
           transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease, border-color 0.15s ease;
@@ -244,7 +278,7 @@ export default function ConfigView({ appData }) {
           transform: scale(0.98) !important;
         }
 
-        /* TRANSICIÓN CALMA Y ELEGANTE (0.60s CONSERVADO SEGÚN TU ELECCIÓN) */
+        /* TRANSICIÓN DE 0.60s CONSERVADA */
         .sector-content-transition {
           animation: slideFadeIn 0.60s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           display: flex;
@@ -256,7 +290,6 @@ export default function ConfigView({ appData }) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        /* ACORDEÓN DE EDICIÓN FLUIDO (CSS Grid 0fr -> 1fr en 450ms) */
         .accordion-wrapper {
           display: grid;
           grid-template-rows: 0fr;
@@ -269,6 +302,26 @@ export default function ConfigView({ appData }) {
           opacity: 1;
         }
         .accordion-content {
+          min-height: 0;
+          overflow: hidden;
+        }
+
+        .input-error {
+          border-color: #ef4444 !important;
+          background: rgba(239, 68, 68, 0.06) !important;
+        }
+        .error-message-wrapper {
+          display: grid;
+          grid-template-rows: 0fr;
+          transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+          opacity: 0;
+          overflow: hidden;
+        }
+        .error-message-wrapper.show {
+          grid-template-rows: 1fr;
+          opacity: 1;
+        }
+        .error-message-content {
           min-height: 0;
           overflow: hidden;
         }
@@ -298,27 +351,18 @@ export default function ConfigView({ appData }) {
           color: var(--primary) !important;
           border-color: var(--primary) !important;
         }
-        
-        .btn-add-pill {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 14px;
-          border-radius: 20px;
-          font-size: 0.85rem;
-          font-weight: 600;
-          cursor: pointer;
-          border: 1px solid var(--primary);
-          background: transparent;
-          color: var(--primary);
-          transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease;
-          user-select: none;
-          -webkit-tap-highlight-color: transparent;
+
+        /* REBOTE ELÁSTICO DE NEGACIÓN AL LLEGAR AL LÍMITE DE 6 RUTINAS */
+        .limit-shake {
+          animation: shakeNoNo 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both !important;
+          border-color: #ef4444 !important;
+          color: #ef4444 !important;
+          background: rgba(239, 68, 68, 0.15) !important;
         }
-        .btn-add-pill:active {
-          transform: scale(0.88) !important;
-          background: var(--primary) !important;
-          color: #fff !important;
+        @keyframes shakeNoNo {
+          0%, 100% { transform: translateX(0) scale(1); }
+          15%, 45%, 75% { transform: translateX(-5px) scale(0.92); }
+          30%, 60%, 90% { transform: translateX(5px) scale(0.92); }
         }
         
         .list-item-exit {
@@ -331,10 +375,11 @@ export default function ConfigView({ appData }) {
           100% { opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border: none; transform: scale(0.9); }
         }
 
+        /* ANIMACIONES DE FILA: SALIDA LÍQUIDA SINCRONIZADA */
         .animated-row {
           display: flex;
-          gap: 8px;
-          align-items: flex-end;
+          flex-direction: column;
+          gap: 4px;
           overflow: hidden;
           transform-origin: top;
         }
@@ -342,17 +387,20 @@ export default function ConfigView({ appData }) {
           animation: slideIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
         }
         .row-exit {
-          animation: slideOut 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          animation: smoothRowDelete 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+          pointer-events: none;
         }
 
         @keyframes slideIn {
           0% { opacity: 0; max-height: 0; margin-bottom: 0; transform: translateY(-10px) scaleY(0.8); }
-          100% { opacity: 1; max-height: 85px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
+          100% { opacity: 1; max-height: 140px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
         }
-        @keyframes slideOut {
-          0% { opacity: 1; max-height: 85px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
-          40% { opacity: 0; transform: translateY(-5px) scaleY(0.95); }
-          100% { opacity: 0; max-height: 0; margin-bottom: 0; transform: translateY(-10px) scaleY(0.8); }
+        
+        /* SALIDA LÍQUIDA: Reducción constante de altura y margen para que lo de abajo suba flotando */
+        @keyframes smoothRowDelete {
+          0% { opacity: 1; max-height: 100px; margin-bottom: 8px; transform: scale(1); }
+          35% { opacity: 0; transform: scale(0.95) translateY(-2px); }
+          100% { opacity: 0; max-height: 0; margin-bottom: 0; transform: scale(0.9) translateY(-8px); }
         }
       `}</style>
 
@@ -549,7 +597,7 @@ export default function ConfigView({ appData }) {
                           )}
                         </div>
 
-                        {/* ACORDEÓN DE EDICIÓN CON CSS GRID FLUIDO (450ms) */}
+                        {/* ACORDEÓN DE EDICIÓN FLUIDO */}
                         <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
                           <div className="accordion-content">
                             <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
@@ -593,82 +641,127 @@ export default function ConfigView({ appData }) {
             </div>
           </div>
 
-          {/* === CREADOR MÚLTIPLE DE RUTINAS === */}
-          <div className="glass-panel" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.25rem', color: 'var(--primary)', fontWeight: '700' }}>Añadir Rutinas</h3>
+          {/* === NUEVAS RUTINAS (CON LÍMITE DE 6 Y REBOTE ELÁSTICO) === */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
+              <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Nuevas Rutinas
+              </span>
               
+              {/* BOTÓN + CON ANIMACIÓN DE NEGACIÓN SI LLEGA AL LÍMITE */}
               <button 
                 type="button"
                 onClick={handleAddRoutineRow}
-                className="btn-add-pill"
-                title="Añadir otro horario"
+                className={`btn-icon-action ${isAtLimitShake ? 'limit-shake' : ''}`}
+                title="Añadir otro horario (Máx. 6)"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                Añadir
               </button>
             </div>
 
-            {localError && !editingRoutineId && <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{localError}</div>}
-            
-            <form onSubmit={onSaveBatchConfig} style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="glass-panel" style={{ padding: '16px' }}>
+              {localError && !editingRoutineId && <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{localError}</div>}
               
-              {routineList.map((routine, index) => {
-                const isRemoving = removingRowIds.includes(routine.id);
+              <form onSubmit={onSaveBatchConfig} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 
-                return (
-                  <div 
-                    key={routine.id} 
-                    className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`} 
-                  >
-                    <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                      {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Hora</label>}
-                      <input 
-                        type="time" 
-                        value={routine.startTime} 
-                        onChange={e => handleChangeRoutineRow(routine.id, 'startTime', e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    
-                    <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                      {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Min</label>}
-                      <input 
-                        type="number" min="5" max="180" 
-                        value={routine.durationMinutes} 
-                        onChange={e => handleChangeRoutineRow(routine.id, 'durationMinutes', e.target.value)} 
-                        required 
-                      />
-                    </div>
+                {routineList.map((routine, index) => {
+                  const isRemoving = removingRowIds.includes(routine.id);
+                  
+                  return (
+                    <div 
+                      key={routine.id} 
+                      className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`} 
+                    >
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                        
+                        <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                          {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Hora</label>}
+                          <input 
+                            type="time" 
+                            value={routine.startTime} 
+                            onChange={e => handleChangeRoutineRow(routine.id, 'startTime', e.target.value)} 
+                            className={routine.errorTime ? 'input-error' : ''}
+                            style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
+                          />
+                        </div>
+                        
+                        <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                          {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Min</label>}
+                          <input 
+                            type="number" min="5" max="180" 
+                            value={routine.durationMinutes} 
+                            onChange={e => handleChangeRoutineRow(routine.id, 'durationMinutes', e.target.value)} 
+                            className={routine.errorDuration ? 'input-error' : ''}
+                            style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
+                          />
+                        </div>
 
-                    {routineList.length > 1 && (
-                      <button 
-                        type="button" 
-                        onClick={() => handleRemoveRoutineRow(routine.id)}
-                        style={{ height: '42px', width: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease' }}
-                        onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.85)'}
-                        onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        title="Eliminar fila"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                        {routineList.length > 1 && (
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveRoutineRow(routine.id)}
+                            style={{ height: '42px', width: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease', flexShrink: 0 }}
+                            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.85)'}
+                            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            title="Eliminar fila"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
 
-              <button 
-                type="submit" 
-                className="btn-primary" 
-                style={{ padding: '14px', marginTop: '4px', opacity: isSaving ? 0.7 : 1, fontSize: '1rem' }} 
-                disabled={isSaving}
-              >
-                {isSaving ? 'Guardando...' : `Guardar ${routineList.length > 1 ? routineList.length + ' rutinas' : 'rutina'}`}
-              </button>
-            </form>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        
+                        <div style={{ flex: 1 }}>
+                          <div className={`error-message-wrapper ${routine.errorTime ? 'show' : ''}`}>
+                            <div className="error-message-content">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                  <circle cx="12" cy="12" r="10"></circle>
+                                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
+                                <span>{routine.errorTime}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ flex: 1 }}>
+                          <div className={`error-message-wrapper ${routine.errorDuration ? 'show' : ''}`}>
+                            <div className="error-message-content">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                  <circle cx="12" cy="12" r="10"></circle>
+                                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
+                                <span>{routine.errorDuration}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {routineList.length > 1 && <div style={{ width: '42px', flexShrink: 0 }} />}
+                      </div>
+
+                    </div>
+                  );
+                })}
+
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  style={{ padding: '14px', marginTop: '8px', opacity: isSaving ? 0.7 : 1, fontSize: '1rem' }} 
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Guardando...' : `Guardar ${routineList.length > 1 ? routineList.length + ' rutinas' : 'rutina'}`}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
