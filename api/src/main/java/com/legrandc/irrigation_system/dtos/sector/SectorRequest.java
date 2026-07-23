@@ -16,9 +16,8 @@ public class SectorRequest {
     @Schema(type = "string", example = "Sector 1", description = "Sector name")
     private String name;
 
-    @NotNull
     @Schema(type = "boolean", example = "true", description = "Default configuration flag")
-    private Boolean defaultConfiguration;
+    private Boolean defaultConfiguration = false;
 
     @Schema(type = "string", example = "Description for Sector 1", description = "Sector description")
     private String description;
@@ -26,4 +25,7 @@ public class SectorRequest {
     @NotNull
     @Schema(type = "string", example = "ACTIVE or INACTIVE", description = "Current state of the sector")
     private String currentState;
+
+    @Schema(type = "boolean", example = "true", description = "Indicates if the sector is enabled")
+    private Boolean enabled;
 }

@@ -1,5 +1,6 @@
 package com.legrandc.irrigation_system.services.impl;
 
+import com.legrandc.irrigation_system.dtos.sector.EnabledRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorRequest;
 import com.legrandc.irrigation_system.dtos.sector.SectorResponse;
 import com.legrandc.irrigation_system.dtos.sector.SectorStateRequest;
@@ -11,11 +12,19 @@ import com.legrandc.irrigation_system.repository.SectorRepository;
 import com.legrandc.irrigation_system.services.IrrigationConfigurationService;
 import com.legrandc.irrigation_system.services.SectorService;
 
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Value;
+
 import jakarta.transaction.Transactional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -51,6 +60,7 @@ public class SectorServiceImpl implements SectorService {
         sector.setName(request.getName());
         sector.setDescription(request.getDescription());
         sector.setCurrentState(parseState(request.getCurrentState()));
+        sector.setEnabled(request.getEnabled());
         
         return toResponse(sectorRepository.save(sector));
     }
@@ -95,17 +105,62 @@ public class SectorServiceImpl implements SectorService {
         sector.setCurrentState(request.getState());
         Sector updatedSector = sectorRepository.save(sector);
 
-        sendSignalToHardware(sector.getId(), request.getState());
+        sendSignalToHardware(sector, request.getState());
 
         return toResponse(updatedSector);
     }
 
+    @Override
+    @Transactional
+    public void updateSectorInBatch(List<EnabledRequest> sectorRequests) {
+
+        List<Sector> sectorToSave = new ArrayList<>();
+        
+        for (EnabledRequest request : sectorRequests){
+            
+            Sector sector = sectorRepository.findById(request.getIdSector()).orElseThrow(() -> new ResourceNotFoundException("Sector not found with id " + request.getIdSector()));
+
+            sector.setEnabled(request.getEnabled());
+
+            sectorToSave.add(sector);
+        }
+
+        sectorRepository.saveAll(sectorToSave);
+
+    }
+
     // TODO: Implement the actual hardware communication logic in the sendSignalToHardware method. For now, it just prints a message to the console.
 
-    private void sendSignalToHardware(Long sectorId, SectorState state) {
+    // Spring Boot lee la IP automáticamente de tu application.properties
+    @Value("${hardware.device.ip}")
+    private String hardwareIp;
+
+    private void sendSignalToHardware(Sector sector, SectorState state) {
         
-        System.out.println(">>> SEÑAL WIFI ENVIADA AL HARDWARE:");
-        System.out.println(">>> Sector ID: " + sectorId + " | Comando: " + state.name());
+        String hardwareUrl = "http://" + hardwareIp + "/api/action";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        String jsonBody = String.format("{\"sectorId\": %d, \"state\": \"%s\"}", 
+                                        sector.getId(), state.name());
+        
+        HttpEntity<String> requestEntity = new HttpEntity<>(jsonBody, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        try {
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                                                hardwareUrl, requestEntity, String.class);
+            
+            System.out.println("Hardware respondió con estado: " + response.getStatusCode());
+            
+        } catch (Exception e) {
+            
+            System.err.println("Error: No se pudo contactar al hardware en la IP: " + hardwareIp);
+            throw new RuntimeException("El dispositivo central no responde. Verifique su conexión.");
+        }
     }
 
     private Sector findSectorOrThrow(Long id) {
@@ -126,6 +181,7 @@ public class SectorServiceImpl implements SectorService {
         response.setName(sector.getName());
         response.setDescription(sector.getDescription());
         response.setCurrentState(sector.getCurrentState() != null ? sector.getCurrentState().name() : null);
+        response.setEnabled(sector.getEnabled());
 
         return response;
     }

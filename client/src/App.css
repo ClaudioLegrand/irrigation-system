@@ -1,38 +1,499 @@
-.App {
-  text-align: center;
+/* src/App.css */
+:root {
+  color-scheme: dark;
+  --bg-app: #020617; /* Slate 950 muy profundo */
+  --bg-gradient: radial-gradient(circle at top right, #0f172a 0%, #020617 60%);
+  --surface: rgba(30, 41, 59, 0.4);
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --primary: #10b981; /* Verde esmeralda moderno */
+  --primary-glow: rgba(16, 185, 129, 0.3);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --danger: #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.3);
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+* { 
+  box-sizing: border-box; 
+  font-family: 'Inter', system-ui, sans-serif; 
+  margin: 0; 
+  padding: 0; 
+  /* Elimina el cuadrado gris de selección en TODO el proyecto */
+  -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
+body { background: var(--bg-app); background-image: var(--bg-gradient); color: var(--text-main); min-height: 100vh; overflow-x: hidden; }
+
+/* Contenedor principal para gestos */
+.app-container { min-height: 100vh; display: flex; flex-direction: column; padding: 24px; padding-bottom: 100px; /* Espacio para el dock */ }
+
+/* Efectos de Cristal (Glassmorphism) */
+.glass-panel { background: var(--surface); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--surface-border); border-radius: 24px; padding: 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); background-clip: padding-box; -webkit-background-clip: padding-box;
+  outline: 1px solid transparent; -webkit-mask-image: -webkit-radial-gradient(white, black); mask-image: radial-gradient(white, black); isolation: isolate; overflow: hidden;}
+
+/* Tipografía */
+h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.4rem; font-weight: 600; }
+.eyebrow { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; color: var(--primary); margin-bottom: 8px; }
+.text-muted { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
+
+/* === Botón Héroe (Gigante) === */
+.hero-button { 
+  position: relative; /* Necesario para la animación */
+  width: 100%; 
+  aspect-ratio: 1 / 1; 
+  max-width: 280px; 
+  margin: 40px auto; 
+  border-radius: 50%; 
+  border: none; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  justify-content: center; 
+  font-size: 1.5rem; 
+  font-weight: 700; 
+  color: white; 
+  cursor: pointer; 
+  
+  /* 1. Solución al cuadrado visual molesto */
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  
+  /* 2. Sombras 3D para darle profundidad y que parezca un botón físico */
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 
+              0 0 0 1px var(--surface-border), 
+              inset 0 2px 10px rgba(255, 255, 255, 0.1); 
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 3. Efecto al presionar físicamente el botón (se hunde en la pantalla) */
+.hero-button:active {
+  transform: translateY(6px) scale(0.96);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.6), 
+              inset 0 6px 15px rgba(0, 0, 0, 0.4);
+}
+
+/* Aseguramos que el texto y los iconos queden por encima de la animación */
+.hero-button p, .hero-button span { 
+  position: relative;
+  z-index: 2; 
+}
+
+.hero-button p {
+  font-size: 0.9rem; 
+  font-weight: 500; 
+  opacity: 0.8; 
+  margin-top: 8px; 
+}
+
+/* --- Estado: Inactivo --- */
+.hero-button.inactive { 
+  background: var(--surface); 
+}
+
+/* --- Estado: Activo --- */
+.hero-button.active { 
+  background: rgba(16, 185, 129, 0.15); /* Fondo verde semitransparente elegante */
+  box-shadow: 0 0 40px var(--primary-glow), inset 0 0 20px rgba(16, 185, 129, 0.2); 
+}
+
+/* 4. La animación del anillo giratorio cuando ESTÁ REGANDO */
+.hero-button.active::before {
+  content: '';
+  position: absolute;
+  inset: -6px; 
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--primary); 
+  border-right-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 -5px 15px var(--primary-glow); 
+  animation: spin-ring 1.5s linear infinite; 
+  z-index: 1;
+}
+
+@keyframes spin-ring {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+/* Botones genéricos */
+.btn-primary { background: var(--primary); color: #020617; border: none; border-radius: 16px; padding: 14px 24px; font-weight: 600; font-size: 1rem; width: 100%; cursor: pointer; transition: 0.2s; }
+.btn-primary:active { transform: scale(0.98); }
+
+/* Inputs y Formularios */
+.input-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.input-group label { font-size: 0.9rem; font-weight: 500; color: var(--text-muted); }
+.input-group input, .input-group select { background: rgba(0,0,0,0.2); border: 1px solid var(--surface-border); border-radius: 12px; padding: 12px 16px; color: white; outline: none; transition: border-color 0.2s; }
+.input-group input:focus, .input-group select:focus { border-color: var(--primary); }
+
+/* Magic Dock (Menú flotante) */
+.magic-dock-wrapper { position: fixed; bottom: 30px; left: 0; width: 100%; display: flex; justify-content: center; z-index: 100; pointer-events: none; }
+.magic-dock { pointer-events: auto; display: flex; align-items: center; gap: 12px; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(20px); padding: 8px; border-radius: 99px; border: 1px solid var(--surface-border); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+.dock-btn { width: 48px; height: 48px; border-radius: 50%; border: none; background: transparent; color: var(--text-muted); font-size: 1.2rem; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; }
+.dock-btn.active { background: var(--primary); color: #020617; box-shadow: 0 8px 20px var(--primary-glow); }
+.dock-btn:hover:not(.active) { color: white; background: rgba(255,255,255,0.1); }
+
+/* Animaciones de Vistas */
+.view-enter { animation: fadeIn 0.4s ease forwards; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* === Componente Switch (Palanca) === */
+.switch-toggle {
+  position: relative;
+  width: 50px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  padding: 4px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+.switch-toggle.is-on {
+  background: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+.switch-toggle__thumb {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0);
+}
+.switch-toggle.is-on .switch-toggle__thumb {
+  transform: translateX(22px);
+}
+
+/* === Efecto de Bloqueo Visual === */
+.config-block {
+  transition: all 0.3s ease;
+}
+.config-block.is-disabled {
+  opacity: 0.4;
+  filter: grayscale(0.8);
+  pointer-events: none; /* Esto evita que se pueda hacer click adentro */
+}
+
+/* === Pestañas deslizables (Chips) === */
+.tabs-container {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  /* Oculta la barra de scroll nativa para un look más limpio */
+  scrollbar-width: none; 
+}
+.tabs-container::-webkit-scrollbar {
+  display: none; 
+}
+
+.chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--surface-border);
+  color: var(--text-muted);
+  padding: 10px 20px;
+  border-radius: 99px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.chip.active {
+  background: var(--primary-glow);
+  color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.15);
+}
+
+/* === Animaciones para las listas === */
+.list-item-enter {
+  animation: fadeInSmooth 0.3s ease-out forwards;
+}
+
+@keyframes fadeInSmooth {
+  from { 
+    opacity: 0; 
+    transform: translateY(-10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
   }
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+/* === Notificación Flotante (Toast) === */
+.toast-banner {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--primary);
+  color: var(--text-main);
+  padding: 12px 24px;
+  border-radius: 99px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5), 0 0 20px rgba(16, 185, 129, 0.2);
+  z-index: 9999;
+  animation: toastEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes toastEnter {
+  from { opacity: 0; transform: translate(-50%, -20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* === Fluidez de Despliegue (Acordeón) === */
+.accordion-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-out;
+  opacity: 0;
+}
+
+.accordion-wrapper.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-content {
+  overflow: hidden;
+}
+
+@keyframes formExpand {
+  from { 
+    opacity: 0; 
+    max-height: 0;
+    transform: translateY(-10px);
+  }
+  to { 
+    opacity: 1; 
+    max-height: 250px; /* Espacio suficiente para los botones */
+    transform: translateY(0);
+  }
+}
+
+/* === Fluidez al Eliminar Rutina === */
+.list-item-exit {
+  /* Dura 350ms para asegurar que termine antes de que React lo borre a los 400ms */
+  animation: evaporatePerfect 0.35s ease-out forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+@keyframes evaporatePerfect {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 250px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+  }
+  /* Fase 1 (del 0% al 40%): Se desliza y desaparece, pero mantiene su espacio intacto */
+  40% {
+    opacity: 0;
+    transform: translateX(-20px); /* Deslizamiento más pronunciado */
+    max-height: 250px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+  }
+  /* Fase 2 (del 40% al 100%): Ahora que es invisible, el espacio se cierra como mantequilla */
+  100% {
+    opacity: 0;
+    transform: translateX(-20px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border: none;
+  }
+}
+
+/* === Layout del Botón Fijo y Pestañas Deslizables === */
+.tabs-header-layout {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.tabs-scroll-area {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none; 
+  -ms-overflow-style: none; 
+  padding: 4px 0;
+  flex: 1;
+  
+  /* LA MAGIA: Máscara de degradado lineal */
+  /* Hace que los primeros 15 píxeles de la izquierda pasen de transparente a visible */
+  -webkit-mask-image: linear-gradient(to right, transparent 100%, black 0px, black 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 10px, black 100%);
+}
+
+.tabs-scroll-area::-webkit-scrollbar {
+  display: none; 
+}
+
+/* Botón Nuevo Fijo (Estilo Minimalista) */
+.btn-fixed-new {
+  flex-shrink: 0; /* Evita que se achique */
+  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  width: 44px;
+  height: 40px;
+  border-radius: 30px;
+  border: 1px dashed var(--primary);
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-fixed-new.active {
+  background: var(--primary);
+  color: #fff;
+  border-style: solid;
 }
 
-.App-link {
-  color: #61dafb;
+/* Iconos de Estado (Reemplazo de emojis) */
+.icon-active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10b981; /* Verde esmeralda vivo */
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); /* Brillo sutil */
+  display: inline-block;
+  margin-right: 8px;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.icon-paused {
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  fill: currentColor;
+  opacity: 0.7;
+}
+
+/* === Burbuja Deslizante del Magic Dock (Efecto Gelatina) === */
+.dock-nav-container {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* 1. EL VEHÍCULO INVISIBLE (Se mueve de forma elástica) */
+.sliding-bubble {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 33.333%; /* Ocupa exactamente un tercio */
+  
+  /* Aquí está la magia del movimiento: esta curva matemática hace que 
+     acelere rápido (estirándose ópticamente) y "rebote" al llegar */
+  transition: transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1);
+  
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 2. LA PASTILLA VISUAL (La que realmente ves brillar) */
+.sliding-bubble::after {
+  content: '';
+  width: 100%;  /* No ocupa todo el ancho, dejando espacio a los lados */
+  height: 100%; /* No ocupa todo el alto */
+  border-radius: 50px; /* Forma de pastilla súper redonda */
+  box-shadow: 0px 0px 5px rgba(16, 185, 129, 0.6);
+  
+  /* Efecto de iluminación interior y exterior */
+  background: rgba(16, 185, 129, 0.25);
+  
+}
+
+/* 3. LOS ÍCONOS (Apagados por defecto) */
+.dock-btn {
+  position: relative;
+  flex: 1;
+  z-index: 1; 
+  background: transparent !important;
+  color: var(--text-muted); /* Color gris/apagado */
+  transition: color 0.3s ease;
+}
+
+/* Animación base para los SVGs */
+.dock-btn svg {
+  transition: transform 0.4s cubic-bezier(0.34, 1.5, 0.64, 1), filter 0.3s ease;
+}
+
+/* 4. EL ÍCONO ACTIVO (Se ilumina como neón y crece) */
+.dock-btn.active {
+  color: var(--primary); /* Se pinta de tu verde principal */
+}
+
+.dock-btn.active svg {
+  transform: translateY(-2px) scale(1.10); /* Salta un poquito hacia arriba y crece */
+  filter: drop-shadow(0px 4px 8px rgba(16, 185, 129, 0.6)); /* Proyecta luz verde */
+}
+
+/* === Botones de Acciones Masivas (Batch) === */
+.btn-batch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px; /* Forma redonda de pastilla */
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.03); /* Fondo casi transparente */
+  color: var(--text-muted); /* Gris neutral, no parece "encendido" */
+  transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1); /* Transición fluida */
+}
+
+/* Efecto Físico al Tocar (Rebote y Luz) */
+.btn-batch:active {
+  transform: scale(0.92); /* Se encoge como un botón físico */
+  background: rgba(255, 255, 255, 0.15); /* Se ilumina el fondo */
+  border-color: var(--text-main);
+  color: var(--text-main); /* El texto se vuelve blanco brillante */
+}
+
+/* === Animaciones Fluidas para las Filas === */
+.routine-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  overflow: hidden;
+  transform-origin: top;
+}
+
+.routine-row-enter {
+  animation: smoothEnter 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.routine-row-exit {
+  animation: smoothExit 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes smoothEnter {
+  0% { opacity: 0; max-height: 0; margin-bottom: 0; transform: scaleY(0.8) translateY(-10px); }
+  100% { opacity: 1; max-height: 80px; margin-bottom: 12px; transform: scaleY(1) translateY(0); }
+}
+
+@keyframes smoothExit {
+  0% { opacity: 1; max-height: 80px; margin-bottom: 12px; transform: scaleY(1) translateY(0); }
+  40% { opacity: 0; transform: scaleY(0.9) translateY(-5px); } /* Se vuelve invisible súper rápido */
+  100% { opacity: 0; max-height: 0; margin-bottom: 0; transform: scaleY(0.5) translateY(-10px); } /* Luego el hueco se cierra suavemente */
 }

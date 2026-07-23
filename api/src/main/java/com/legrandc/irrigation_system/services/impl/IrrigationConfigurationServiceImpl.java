@@ -118,6 +118,13 @@ public class IrrigationConfigurationServiceImpl implements IrrigationConfigurati
 
     @Override
     @Transactional
+    public void updateConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest) {
+        
+        createConfigurationsInBatch(listRequest);
+    }
+
+    @Override
+    @Transactional
     public void createConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest) {
         
         Map<String, IrrigationConfigurationRequest> uniqueRequests = new LinkedHashMap<>();
