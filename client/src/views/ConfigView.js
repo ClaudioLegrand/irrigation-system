@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function ConfigView({ appData }) {
   const { 
@@ -35,6 +35,12 @@ export default function ConfigView({ appData }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
 
+  // REFERENCIAS PARA EL AUTO-SCROLL Y FÍSICA DE REBOTE
+  const routineRefs = useRef({});
+  const scrollContainerRef = useRef(null);
+  const [scrollShadows, setScrollShadows] = useState({ top: false, bottom: true });
+  const [edgeBounce, setEdgeBounce] = useState(''); // 'top' o 'bottom'
+
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
       handleSetTab(sectors[0]?.id || 'NEW');
@@ -63,7 +69,27 @@ export default function ConfigView({ appData }) {
     return timeA.localeCompare(timeB);
   });
 
-  // AÑADIR CON LÍMITE Y REBOTE FÍSICO DE NEGACIÓN
+  // SENSOR DE SCROLL PARA SOMBRAS DINÁMICAS Y REBOTE EN LOS TOPES
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const isAtTop = scrollTop <= 2;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight <= 2;
+
+    setScrollShadows({
+      top: !isAtTop,
+      bottom: !isAtBottom && scrollHeight > clientHeight
+    });
+
+    // Gatillo de física de rebote si el usuario choca contra los topes
+    if (isAtTop && scrollTop === 0 && edgeBounce !== 'top') {
+      setEdgeBounce('top');
+      setTimeout(() => setEdgeBounce(''), 300);
+    } else if (isAtBottom && edgeBounce !== 'bottom' && scrollHeight > clientHeight) {
+      setEdgeBounce('bottom');
+      setTimeout(() => setEdgeBounce(''), 300);
+    }
+  };
+
   const handleAddRoutineRow = () => {
     if (routineList.length >= MAX_ROUTINES) {
       setIsAtLimitShake(true);
@@ -76,13 +102,11 @@ export default function ConfigView({ appData }) {
     ]);
   };
 
-  // ELIMINACIÓN CON SALIDA LÍQUIDA SINCRONIZADA
   const handleRemoveRoutineRow = (idToRemove) => {
     if (routineList.length === 1) return; 
     
     setRemovingRowIds(prev => [...prev, idToRemove]);
     
-    // Sincronizado milimétricamente con los 420ms del CSS
     setTimeout(() => {
       setRoutineList(prev => prev.filter(r => r.id !== idToRemove));
       setRemovingRowIds(prev => prev.filter(id => id !== idToRemove));
@@ -156,6 +180,7 @@ export default function ConfigView({ appData }) {
     }
   };
 
+  // AL ABRIR LA EDICIÓN, EJECUTAMOS EL AUTO-SCROLL COREOGRAFIADO
   const startEditing = (routine) => {
     setLocalError('');
     setConfirmDeleteId(null); 
@@ -164,6 +189,14 @@ export default function ConfigView({ appData }) {
       startTime: formatTime(routine.startTime),
       durationMinutes: routine.durationMinutes
     });
+
+    // Esperamos 160ms a que el acordeón empiece a expandirse para deslizar suavemente la vista
+    setTimeout(() => {
+      const element = routineRefs.current[routine.id];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 160);
   };
 
   const cancelEditing = () => {
@@ -198,7 +231,7 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ESTILOS BLINDADOS: Salida líquida + Rebote elástico + Tu tiempo de 0.60s */}
+      {/* ESTILOS BLINDADOS: Auto-Scroll + Rebote de topes + Tu tiempo de 0.60s */}
       <style>{`
         .led-wrapper {
           width: 16px;
@@ -290,6 +323,66 @@ export default function ConfigView({ appData }) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
+        /* CONTENEDOR CON SOMBRAS DINÁMICAS Y MICRO-REBOTE EN TOPES */
+        .scroll-shadow-wrapper {
+          position: relative;
+          border-radius: 16px;
+          transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .scroll-shadow-wrapper.bounce-top {
+          transform: translateY(4px);
+        }
+        .scroll-shadow-wrapper.bounce-bottom {
+          transform: translateY(-4px);
+        }
+        .scroll-shadow-wrapper::before, .scroll-shadow-wrapper::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 16px;
+          pointer-events: none;
+          z-index: 2;
+          transition: opacity 0.25s ease;
+        }
+        .scroll-shadow-wrapper::before {
+          top: 0;
+          background: linear-gradient(to bottom, rgba(0,0,0,0.18), transparent);
+          opacity: 0;
+        }
+        .scroll-shadow-wrapper::after {
+          bottom: 0;
+          background: linear-gradient(to top, rgba(0,0,0,0.18), transparent);
+          opacity: 0;
+        }
+        .scroll-shadow-wrapper.show-top::before { opacity: 1; }
+        .scroll-shadow-wrapper.show-bottom::after { opacity: 1; }
+
+        .routines-scroll-area {
+          max-height: 350px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding: 2px 4px 2px 2px;
+        }
+        .routines-scroll-area::-webkit-scrollbar {
+          width: 5px;
+        }
+        .routines-scroll-area::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 10px;
+        }
+        .routines-scroll-area::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+        }
+        .routines-scroll-area::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+
         .accordion-wrapper {
           display: grid;
           grid-template-rows: 0fr;
@@ -352,7 +445,6 @@ export default function ConfigView({ appData }) {
           border-color: var(--primary) !important;
         }
 
-        /* REBOTE ELÁSTICO DE NEGACIÓN AL LLEGAR AL LÍMITE DE 6 RUTINAS */
         .limit-shake {
           animation: shakeNoNo 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both !important;
           border-color: #ef4444 !important;
@@ -375,7 +467,6 @@ export default function ConfigView({ appData }) {
           100% { opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border: none; transform: scale(0.9); }
         }
 
-        /* ANIMACIONES DE FILA: SALIDA LÍQUIDA SINCRONIZADA */
         .animated-row {
           display: flex;
           flex-direction: column;
@@ -396,7 +487,6 @@ export default function ConfigView({ appData }) {
           100% { opacity: 1; max-height: 140px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
         }
         
-        /* SALIDA LÍQUIDA: Reducción constante de altura y margen para que lo de abajo suba flotando */
         @keyframes smoothRowDelete {
           0% { opacity: 1; max-height: 100px; margin-bottom: 8px; transform: scale(1); }
           35% { opacity: 0; transform: scale(0.95) translateY(-2px); }
@@ -522,11 +612,11 @@ export default function ConfigView({ appData }) {
             </div>
           </div>
 
-          {/* === RUTINAS PROGRAMADAS === */}
+          {/* === RUTINAS PROGRAMADAS CON CONTADOR Y SCROLL PROTEGIDO === */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
               <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Rutinas Programadas
+                Rutinas Programadas {sortedConfigs.length > 0 && <span style={{ color: 'var(--primary)', fontWeight: '800' }}>({sortedConfigs.length})</span>}
               </span>
               
               {sortedConfigs.length > 0 && typeof handleToggleAllConfigurations === 'function' && (
@@ -562,80 +652,88 @@ export default function ConfigView({ appData }) {
               {sortedConfigs.length === 0 ? (
                 <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {sortedConfigs.map((c) => {
-                    const isEditing = editingRoutineId === c.id;
-                    const isDeleting = deletingIds.includes(c.id);
-                    
-                    return (
-                      <div 
-                        key={c.id} 
-                        className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
-                        style={{ 
-                          background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
-                          opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
-                          transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer'
-                        }}
-                        onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                              {formatTime(c.startTime)}
-                            </h4>
-                            <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
-                              {c.durationMinutes} minutos
-                            </p>
+                /* CONTENEDOR CON SOMBRAS DINÁMICAS Y MICRO-REBOTE EN TOPES */
+                <div className={`scroll-shadow-wrapper ${scrollShadows.top ? 'show-top' : ''} ${scrollShadows.bottom ? 'show-bottom' : ''} ${edgeBounce === 'top' ? 'bounce-top' : ''} ${edgeBounce === 'bottom' ? 'bounce-bottom' : ''}`}>
+                  <div 
+                    ref={scrollContainerRef}
+                    className="routines-scroll-area"
+                    onScroll={handleScroll}
+                  >
+                    {sortedConfigs.map((c) => {
+                      const isEditing = editingRoutineId === c.id;
+                      const isDeleting = deletingIds.includes(c.id);
+                      
+                      return (
+                        <div 
+                          key={c.id} 
+                          ref={el => routineRefs.current[c.id] = el}
+                          className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
+                          style={{ 
+                            background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
+                            opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
+                            transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer', flexShrink: 0
+                          }}
+                          onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                                {formatTime(c.startTime)}
+                              </h4>
+                              <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
+                                {c.durationMinutes} minutos
+                              </p>
+                            </div>
+                            
+                            {isEditing ? (
+                              <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
+                            ) : (
+                              <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
+                                <span className="switch-toggle__thumb" />
+                              </button>
+                            )}
                           </div>
-                          
-                          {isEditing ? (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
-                          ) : (
-                            <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
-                              <span className="switch-toggle__thumb" />
-                            </button>
-                          )}
-                        </div>
 
-                        {/* ACORDEÓN DE EDICIÓN FLUIDO */}
-                        <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
-                          <div className="accordion-content">
-                            <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
-                              <div style={{ display: 'flex', gap: '12px' }}>
-                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
-                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
-                              </div>
-                              
-                              {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
-                              
-                              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
-                                <button 
-                                  type="button" 
-                                  onClick={(e) => { 
-                                    e.stopPropagation();
-                                    if (confirmDeleteId === c.id) {
-                                      setDeletingIds(prev => [...prev, c.id]);
-                                      setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
-                                    } else {
-                                      setConfirmDeleteId(c.id);
-                                    }
-                                  }} 
-                                  style={{ 
-                                    flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
-                                    border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
-                                    background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
-                                  }}
-                                >
-                                  {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
-                                </button>
-                              </div>
-                            </form>
+                          {/* ACORDEÓN DE EDICIÓN FLUIDO */}
+                          <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
+                            <div className="accordion-content">
+                              <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
+                                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
+                                </div>
+                                
+                                {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
+                                
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                  <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
+                                  <button 
+                                    type="button" 
+                                    onClick={(e) => { 
+                                      e.stopPropagation();
+                                      if (confirmDeleteId === c.id) {
+                                        setDeletingIds(prev => [...prev, c.id]);
+                                        setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
+                                      } else {
+                                        setConfirmDeleteId(c.id);
+                                      }
+                                    }} 
+                                    style={{ 
+                                      flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
+                                      border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                                      background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
+                                    }}
+                                  >
+                                    {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
+                                  </button>
+                                </div>
+                              </form>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
