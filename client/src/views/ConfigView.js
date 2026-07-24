@@ -36,13 +36,20 @@ export default function ConfigView({ appData }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
 
-  // REFERENCIAS Y BANDERA DE INMUNIDAD PARA EL AUTO-SCROLL FLUIDO
+  // REFERENCIAS PARA AUTO-SCROLL
   const routineRefs = useRef({});
   const scrollContainerRef = useRef(null);
-  const isProgrammaticScroll = useRef(false); // <--- ESCUDO ANTI-CONFLICTO CON EL REBOTE
+  const isProgrammaticScroll = useRef(false);
   
   const [scrollShadows, setScrollShadows] = useState({ top: false, bottom: false });
   const [edgeBounce, setEdgeBounce] = useState('');
+
+  // ESTADOS Y REFERENCIAS PARA LA BARRA HORIZONTAL CON DEGRADÉ Y ESCUDO ANTI-ARRASTRE
+  const [scrollShadowsTabs, setScrollShadowsTabs] = useState({ left: false, right: false });
+  const tabsScrollRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
 
   useEffect(() => {
     if (selectedTab !== 'NEW' && !sectors.find(s => s.id === selectedTab)) {
@@ -72,15 +79,14 @@ export default function ConfigView({ appData }) {
     return timeA.localeCompare(timeB);
   });
 
+  // LÓGICA DE SOMBRAS VERTICALES (RUTINAS)
   const checkScrollShadows = () => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    
     const { scrollTop, scrollHeight, clientHeight } = el;
     const isAtTop = scrollTop <= 2;
     const isAtBottom = scrollHeight - scrollTop - clientHeight <= 2;
     const hasScroll = scrollHeight > clientHeight;
-
     setScrollShadows({
       top: !isAtTop && hasScroll,
       bottom: !isAtBottom && hasScroll
@@ -93,7 +99,6 @@ export default function ConfigView({ appData }) {
     return () => clearTimeout(timer);
   }, [selectedTab, sortedConfigs.length, editingRoutineId]);
 
-  // SENSOR DE SCROLL BLINDADO: Si el scroll es automático, ignoramos el rebote en los topes
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isAtTop = scrollTop <= 2;
@@ -105,7 +110,6 @@ export default function ConfigView({ appData }) {
       bottom: !isAtBottom && hasScroll
     });
 
-    // Si la app está moviendo el scroll por ti, no dispares el rebote visual
     if (isProgrammaticScroll.current) return;
 
     if (isAtTop && scrollTop === 0 && edgeBounce !== 'top' && hasScroll) {
@@ -115,6 +119,60 @@ export default function ConfigView({ appData }) {
       setEdgeBounce('bottom');
       setTimeout(() => setEdgeBounce(''), 300);
     }
+  };
+
+  // LÓGICA DE SOMBRAS HORIZONTALES Y ESCUDO ANTI-ARRASTRE (PESTAÑAS SECTORES)
+  const checkHorizontalScrollTabs = () => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const hasScroll = scrollWidth > clientWidth;
+    const isAtLeft = scrollLeft <= 2;
+    const isAtRight = scrollWidth - scrollLeft - clientWidth <= 2;
+    setScrollShadowsTabs({
+      left: !isAtLeft && hasScroll,
+      right: !isAtRight && hasScroll
+    });
+  };
+
+  useEffect(() => {
+    checkHorizontalScrollTabs();
+    const timer = setTimeout(checkHorizontalScrollTabs, 350);
+    return () => clearTimeout(timer);
+  }, [sectors]);
+
+  const handleHorizontalScrollTabs = (e) => {
+    const { scrollLeft, scrollWidth, clientWidth } = e.currentTarget;
+    const hasScroll = scrollWidth > clientWidth;
+    setScrollShadowsTabs({
+      left: scrollLeft > 2 && hasScroll,
+      right: scrollWidth - scrollLeft - clientWidth > 2 && hasScroll
+    });
+  };
+
+  const handleTouchStartTabs = (e) => {
+    isDraggingRef.current = false;
+    const touch = e.touches ? e.touches[0] : e;
+    startXRef.current = touch.clientX;
+    startYRef.current = touch.clientY;
+  };
+
+  const handleTouchMoveTabs = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    const diffX = Math.abs(touch.clientX - startXRef.current);
+    const diffY = Math.abs(touch.clientY - startYRef.current);
+    if (diffX > 4 && diffX > diffY) {
+      isDraggingRef.current = true;
+      if (e.stopPropagation) e.stopPropagation();
+    }
+  };
+
+  const handleTabClick = (id) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      return; 
+    }
+    handleSetTab(id);
   };
 
   const handleAddRoutineRow = () => {
@@ -131,9 +189,7 @@ export default function ConfigView({ appData }) {
 
   const handleRemoveRoutineRow = (idToRemove) => {
     if (routineList.length === 1) return; 
-    
     setRemovingRowIds(prev => [...prev, idToRemove]);
-    
     setTimeout(() => {
       setRoutineList(prev => prev.filter(r => r.id !== idToRemove));
       setRemovingRowIds(prev => prev.filter(id => id !== idToRemove));
@@ -223,7 +279,6 @@ export default function ConfigView({ appData }) {
     handleSetTab(sectors[0]?.id || 'NEW');
   };
 
-  // AUTO-SCROLL COREOGRAFIADO CON ESCUDO DE INMUNIDAD ACTIVO
   const startEditing = (routine) => {
     setLocalError('');
     setConfirmDeleteId(null); 
@@ -233,7 +288,6 @@ export default function ConfigView({ appData }) {
       durationMinutes: routine.durationMinutes
     });
 
-    // Activamos el escudo para que el rebote no interfiera con el centrado del primero/último
     isProgrammaticScroll.current = true;
 
     setTimeout(() => {
@@ -241,7 +295,6 @@ export default function ConfigView({ appData }) {
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      // Apagamos el escudo medio segundo después de que termine la animación
       setTimeout(() => {
         isProgrammaticScroll.current = false;
       }, 500);
@@ -280,50 +333,110 @@ export default function ConfigView({ appData }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ESTILOS BLINDADOS: Movimiento fluido + Cero conflictos en topes + Tu tiempo de 0.60s */}
       <style>{`
-        .led-wrapper {
-          width: 16px;
-          min-width: 16px;
+        /* BARRA HORIZONTAL MINIATURIZADA (WHATSAPP STYLE) Y BLOQUEO DE GESTOS NATIVOS */
+        .history-filter-layout {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          position: relative;
+          width: 100%;
+          min-width: 0;
+          margin-top: 4px;
+        }
+
+        /* BOTÓN FIJO CIRCULAR (32x32px - Más claro) */
+        .btn-fixed-new {
+          flex-shrink: 0 !important;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
-        }
-        .led-ring {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          transition: all 0.25s ease;
-          box-sizing: border-box;
-        }
-        .led-ring.active {
-          background: var(--primary);
-          border: none;
-          box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-        }
-        .led-ring.paused {
-          background: transparent;
-          border: 1.5px solid var(--text-muted);
-          opacity: 0.6;
-        }
-
-        .btn-fixed-new {
-          flex-shrink: 0 !important;
-          border: 1.5px dashed rgba(255, 255, 255, 0.35) !important;
-          background: rgba(255, 255, 255, 0.07) !important;
-          color: var(--text-main) !important;
-          transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+          padding: 0;
+          border: 1px dashed rgba(255, 255, 255, 0.45) !important;
+          background: rgba(255, 255, 255, 0.12) !important;
+          color: var(--text-muted) !important;
+          cursor: pointer;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
         }
         .btn-fixed-new:hover, .btn-fixed-new.active {
-          border: 1.5px solid var(--primary) !important;
+          border: 1px solid var(--primary) !important;
           background: rgba(16, 185, 129, 0.15) !important;
           color: var(--primary) !important;
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+        }
+        .btn-fixed-new:active {
+          transform: scale(0.92);
         }
 
+        /* SOMBRAS SUTILES (rgba 0.12) EN EL CARRUSEL */
+        .carousel-shadow-wrapper {
+          position: relative;
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          -webkit-mask-image: linear-gradient(to right, black, black);
+          mask-image: linear-gradient(to right, black, black);
+        }
+        .carousel-shadow-wrapper.show-left.show-right {
+          -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+          mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+        }
+        .carousel-shadow-wrapper.show-left:not(.show-right) {
+          -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black);
+          mask-image: linear-gradient(to right, transparent, black 16px, black);
+        }
+        .carousel-shadow-wrapper.show-right:not(.show-left) {
+          -webkit-mask-image: linear-gradient(to left, transparent, black 16px, black);
+          mask-image: linear-gradient(to left, transparent, black 16px, black);
+        }
+
+        .filter-scroll-area {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          overflow-x: auto;
+          overscroll-behavior-x: contain;
+          touch-action: pan-x;
+          -webkit-overflow-scrolling: touch;
+          padding: 2px 4px 2px 0;
+          scrollbar-width: none;
+          flex: 1;
+        }
+        .filter-scroll-area::-webkit-scrollbar {
+          display: none;
+        }
+
+        /* CHIPS DE NAVEGACIÓN (Un toque más grandes y claros) */
         .chip {
           flex-shrink: 0;
-          max-width: 180px;
+          padding: 6px 14px;
+          border-radius: 20px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: var(--text-muted, #94a3b8);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          max-width: 160px;
+        }
+        .chip:active {
+          transform: scale(0.96);
+        }
+        .chip.active {
+          background: rgba(16, 185, 129, 0.12);
+          border-color: var(--primary, #10b981);
+          color: var(--primary, #10b981);
         }
         .chip-text {
           white-space: nowrap;
@@ -331,6 +444,58 @@ export default function ConfigView({ appData }) {
           text-overflow: ellipsis;
           display: inline-block;
           vertical-align: middle;
+        }
+
+        .led-wrapper {
+          width: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .led-ring {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          transition: all 0.25s ease;
+          box-sizing: border-box;
+        }
+        .led-ring.active {
+          background: var(--primary);
+          border: none;
+          box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+        }
+        .led-ring.paused {
+          background: transparent;
+          border: 1.5px solid var(--text-muted);
+          opacity: 0.6;
+        }
+
+        /* MICRO BOTONES DE ACCIÓN GLOBAL (Activar/Pausar Todos: 28x28px) */
+        .btn-icon-action {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          cursor: pointer;
+          border: 1px solid var(--surface-border);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-muted);
+          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .btn-icon-action:hover {
+          color: var(--text-main);
+          border-color: var(--text-muted);
+        }
+        .btn-icon-action:active {
+          transform: scale(0.85) !important;
+          background: rgba(255, 255, 255, 0.15) !important;
+          color: var(--primary) !important;
+          border-color: var(--primary) !important;
         }
 
         .card-title-shield {
@@ -360,7 +525,6 @@ export default function ConfigView({ appData }) {
           transform: scale(0.98) !important;
         }
 
-        /* TRANSICIÓN DE 0.60s CONSERVADA */
         .sector-content-transition {
           animation: slideFadeIn 0.60s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           display: flex;
@@ -467,32 +631,6 @@ export default function ConfigView({ appData }) {
           overflow: hidden;
         }
 
-        .btn-icon-action {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          cursor: pointer;
-          border: 1px solid var(--surface-border);
-          background: rgba(255, 255, 255, 0.03);
-          color: var(--text-muted);
-          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
-          user-select: none;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .btn-icon-action:hover {
-          color: var(--text-main);
-          border-color: var(--text-muted);
-        }
-        .btn-icon-action:active {
-          transform: scale(0.85) !important;
-          background: rgba(255, 255, 255, 0.15) !important;
-          color: var(--primary) !important;
-          border-color: var(--primary) !important;
-        }
-
         .limit-shake {
           animation: shakeNoNo 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both !important;
           border-color: #ef4444 !important;
@@ -548,14 +686,15 @@ export default function ConfigView({ appData }) {
           <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Mis Sectores
           </span>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          {/* MICRO BOTONES GLOBALES DE SECTORES (28x28) */}
+          <div style={{ display: 'flex', gap: '6px' }}>
             <button 
               type="button"
               className="btn-icon-action"
               onClick={() => handleToggleAllSectors(true)} 
               title="Habilitar todos los sectores"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 6L7 17l-5-5"></path>
                 <path d="m22 10-7.5 7.5L13 16"></path>
               </svg>
@@ -566,7 +705,7 @@ export default function ConfigView({ appData }) {
               onClick={() => handleToggleAllSectors(false)} 
               title="Pausar todos los sectores"
             >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
               </svg>
@@ -574,51 +713,55 @@ export default function ConfigView({ appData }) {
           </div>
         </div>
 
-        <div className="tabs-header-layout">
+        {/* BARRA HORIZONTAL MINIATURIZADA (WHATSAPP STYLE) */}
+        <div className="history-filter-layout">
+          
           <button 
             className={`btn-fixed-new ${selectedTab === 'NEW' ? 'active' : ''}`} 
-            onClick={() => handleSetTab('NEW')}
+            onClick={() => handleTabClick('NEW')}
             title="Crear nuevo sector"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
           </button>
 
-          <div 
-            className="tabs-scroll-area"
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            {sectors.map(sector => {
-              const isEnabled = sector.enabled !== false;
-              const isSelected = selectedTab === sector.id;
-              return (
-                <button 
-                  key={sector.id} 
-                  className={`chip ${isSelected ? 'active' : ''}`} 
-                  onClick={() => handleSetTab(sector.id)} 
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                  title={sector.name}
-                >
-                  <span className="led-wrapper">
-                    <span className={`led-ring ${isEnabled ? 'active' : 'paused'}`}></span>
-                  </span>
-                  <span className="chip-text">{sector.name}</span>
-                </button>
-              );
-            })}
+          <div className={`carousel-shadow-wrapper ${scrollShadowsTabs.left ? 'show-left' : ''} ${scrollShadowsTabs.right ? 'show-right' : ''}`}>
+            <div 
+              ref={tabsScrollRef}
+              className="filter-scroll-area"
+              onScroll={handleHorizontalScrollTabs}
+              onTouchStart={handleTouchStartTabs}
+              onTouchMove={handleTouchMoveTabs}
+              onMouseDown={handleTouchStartTabs}
+              onMouseMove={handleTouchMoveTabs}
+            >
+              {sectors.map(sector => {
+                const isEnabled = sector.enabled !== false;
+                const isSelected = selectedTab === sector.id;
+                return (
+                  <button 
+                    key={sector.id} 
+                    className={`chip ${isSelected ? 'active' : ''}`} 
+                    onClick={() => handleTabClick(sector.id)} 
+                    title={sector.name}
+                  >
+                    <span className="led-wrapper">
+                      <span className={`led-ring ${isEnabled ? 'active' : 'paused'}`}></span>
+                    </span>
+                    <span className="chip-text">{sector.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* CONTENEDOR CON TRANSICIÓN SUAVE */}
       {selectedTab !== 'NEW' && selectedSectorObj && (
         <div key={selectedTab} className="sector-content-transition">
           
-          {/* TARJETA PRINCIPAL INTERACTIVA Y BLINDADA */}
           <div 
             className="glass-panel interactive-card" 
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '84px', gap: '16px' }}
@@ -660,7 +803,6 @@ export default function ConfigView({ appData }) {
             </div>
           </div>
 
-          {/* === RUTINAS PROGRAMADAS CON CONTADOR Y SCROLL PROTEGIDO === */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
               <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -668,14 +810,15 @@ export default function ConfigView({ appData }) {
               </span>
               
               {sortedConfigs.length > 0 && typeof handleToggleAllConfigurations === 'function' && (
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {/* MICRO BOTONES GLOBALES DE RUTINAS (28x28) */}
                   <button 
                     type="button"
                     className="btn-icon-action"
                     onClick={(e) => { e.stopPropagation(); handleToggleAllConfigurations(selectedTab, true); }} 
                     title="Activar todas las rutinas"
                   >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 6L7 17l-5-5"></path>
                       <path d="m22 10-7.5 7.5L13 16"></path>
                     </svg>
@@ -687,7 +830,7 @@ export default function ConfigView({ appData }) {
                     onClick={(e) => { e.stopPropagation(); handleToggleAllConfigurations(selectedTab, false); }} 
                     title="Pausar todas las rutinas"
                   >
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10"></circle>
                       <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
                     </svg>
@@ -785,7 +928,6 @@ export default function ConfigView({ appData }) {
             </div>
           </div>
 
-          {/* === NUEVAS RUTINAS (CON LÍMITE DE 6 Y REBOTE ELÁSTICO) === */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
               <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -909,7 +1051,6 @@ export default function ConfigView({ appData }) {
         </div>
       )}
 
-      {/* === CREAR SECTOR (BLINDADO CON VALIDACIÓN FLUIDA Y SIN SALIDAS BRUSCAS) === */}
       {selectedTab === 'NEW' && (
         <div className="glass-panel sector-content-transition">
           <h3 style={{ fontSize: '1.4rem', marginBottom: '6px', fontWeight: '700' }}>Crear Sector</h3>

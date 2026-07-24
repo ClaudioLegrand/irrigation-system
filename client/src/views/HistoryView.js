@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function HistoryView(props) {
   const appData = props.appData || props || {};
   
-  // Recepción blindada buscando todas las variantes de nombres de tabla en Java/MySQL
   const rawHistory = Array.isArray(appData) 
     ? appData 
     : (appData.irrigationHistory || appData.history || appData.historial || appData.logs || appData.records || appData.activities || appData.activityLog || appData.registros || props.irrigationHistory || props.history || props.historial || props.logs || props.records || []);
@@ -11,7 +10,6 @@ export default function HistoryView(props) {
   const [expandedId, setExpandedId] = useState(null);
   const [selectedFilter, setSelectedFilter] = useState('ALL');
 
-  // ESTADOS Y REFERENCIAS PARA LA BARRA HORIZONTAL CON DEGRADÉ Y ESCUDO ANTI-ARRASTRE
   const [scrollShadows, setScrollShadows] = useState({ left: false, right: false });
   const tabsScrollRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -55,7 +53,6 @@ export default function HistoryView(props) {
     });
   };
 
-  // BLINDAJE TÁCTIL TOTAL: Previene cambios de página en el celular y distingue clics de arrastres
   const handleTouchStart = (e) => {
     isDraggingRef.current = false;
     const touch = e.touches ? e.touches[0] : e;
@@ -68,7 +65,6 @@ export default function HistoryView(props) {
     const diffX = Math.abs(touch.clientX - startXRef.current);
     const diffY = Math.abs(touch.clientY - startYRef.current);
 
-    // Si el movimiento es horizontal y mayor a 4px, activamos el escudo anti-clic y frenamos la propagación
     if (diffX > 4 && diffX > diffY) {
       isDraggingRef.current = true;
       if (e.stopPropagation) e.stopPropagation();
@@ -78,7 +74,7 @@ export default function HistoryView(props) {
   const handleFilterClick = (filterId) => {
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
-      return; // Fue un arrastre: ignoramos el clic
+      return; 
     }
     setSelectedFilter(filterId);
     setExpandedId(null);
@@ -88,7 +84,6 @@ export default function HistoryView(props) {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // 1. BUSCADOR DE SECTORES POR SECTOR_ID
   const getSectorObj = (item) => {
     const secId = item.sector_id || item.sectorId || item.id_sector;
     if (secId && appData.sectors && Array.isArray(appData.sectors)) {
@@ -109,7 +104,6 @@ export default function HistoryView(props) {
     return 'Sector de Riego';
   };
 
-  // 2. EXTRACTOR DE TIEMPOS QUIRÚRGICO
   const formatDateTime = (rawTime) => {
     if (!rawTime) return { timeShort: '--:--', timeExact: '--:--:--', date: '' };
 
@@ -178,7 +172,6 @@ export default function HistoryView(props) {
     return 0;
   };
 
-  // 3. CÁLCULO DE DURACIÓN EXACTA
   const getDuration = (item) => {
     const dur = item.durationMinutes || item.duration_minutes || item.duration || item.duracion || item.duracion_minutos || item.minutes || item.minutos;
     if (dur !== undefined && dur !== null && dur !== '') return `${dur} min`;
@@ -194,7 +187,6 @@ export default function HistoryView(props) {
     return '1 min';
   };
 
-  // 4. TRADUCTOR DE ORIGEN
   const formatTrigger = (item) => {
     const trigger = item.origin_order || item.originOrder || item.triggerSource || item.trigger_source || item.triggeredBy || item.triggered_by || item.origen || item.source || item.tipo || item.type || 'MANUAL_APP';
     const lower = String(trigger).toLowerCase();
@@ -221,7 +213,6 @@ export default function HistoryView(props) {
     return tB - tA;
   });
 
-  // 5. RADAR CRUZADO DE SECTORES (Para estado PRENDIDO)
   const checkIsActive = (item, index) => {
     if (item.active === true || item.activo === true || item.isRunning === true || item.is_running === true || item.prendido === true) return true;
     if (item.active === false || item.activo === false || item.isRunning === false || item.is_running === false) return false;
@@ -248,7 +239,6 @@ export default function HistoryView(props) {
     return false;
   };
 
-  // 6. FILTRADO FINAL
   const filteredHistory = sortedHistory.filter(item => {
     if (selectedFilter === 'ALL') return true;
     
@@ -274,36 +264,39 @@ export default function HistoryView(props) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        /* BARRA HORIZONTAL CON DEGRADÉ SUTIL (0.12) Y BLOQUEO DE GESTOS NATIVOS */
         .history-filter-layout {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
           position: relative;
           width: 100%;
           min-width: 0;
+          margin-top: 4px;
         }
         
-        /* BOTÓN CIRCULAR MINIMALISTA ("VER TODO" SIN TEXTO) */
+        /* BOTÓN CIRCULAR (32x32px - Más claro) */
         .btn-circle-all {
           flex-shrink: 0;
-          width: 38px;
-          height: 38px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
           cursor: pointer;
           user-select: none;
           -webkit-tap-highlight-color: transparent;
-          transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--surface-border, rgba(255,255,255,0.08));
+          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.15);
           color: var(--text-muted, #94a3b8);
           display: flex;
           align-items: center;
           justify-content: center;
         }
         .btn-circle-all:hover {
-          background: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.1);
           color: var(--text-main, #ffffff);
+        }
+        .btn-circle-all:active {
+          transform: scale(0.92);
         }
         .btn-circle-all.active {
           background: rgba(16, 185, 129, 0.15);
@@ -317,36 +310,26 @@ export default function HistoryView(props) {
           flex: 1;
           min-width: 0;
           display: flex;
+          -webkit-mask-image: linear-gradient(to right, black, black);
+          mask-image: linear-gradient(to right, black, black);
         }
-        .carousel-shadow-wrapper::before, .carousel-shadow-wrapper::after {
-          content: '';
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          width: 16px;
-          pointer-events: none;
-          z-index: 5;
-          transition: opacity 0.25s ease;
+        .carousel-shadow-wrapper.show-left.show-right {
+          -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+          mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
         }
-        /* SOMBRAS ULTRA-SUTILES (rgba 0.12) */
-        .carousel-shadow-wrapper::before {
-          left: 0;
-          background: linear-gradient(to right, rgba(0,0,0,0.12), transparent);
-          opacity: 0;
+        .carousel-shadow-wrapper.show-left:not(.show-right) {
+          -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black);
+          mask-image: linear-gradient(to right, transparent, black 16px, black);
         }
-        .carousel-shadow-wrapper::after {
-          right: 0;
-          background: linear-gradient(to left, rgba(0,0,0,0.12), transparent);
-          opacity: 0;
+        .carousel-shadow-wrapper.show-right:not(.show-left) {
+          -webkit-mask-image: linear-gradient(to left, transparent, black 16px, black);
+          mask-image: linear-gradient(to left, transparent, black 16px, black);
         }
-        .carousel-shadow-wrapper.show-left::before { opacity: 1; }
-        .carousel-shadow-wrapper.show-right::after { opacity: 1; }
 
-        /* BLINDAJE NATíVO PARA CELULAR: overscroll-behavior-x y touch-action */
         .filter-scroll-area {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
           overflow-x: auto;
           overscroll-behavior-x: contain;
           touch-action: pan-x;
@@ -358,23 +341,28 @@ export default function HistoryView(props) {
         .filter-scroll-area::-webkit-scrollbar {
           display: none;
         }
+
+        /* PASTILLAS WHATSAPP STYLE (Un toque más grandes y claras) */
         .filter-chip {
           flex-shrink: 0;
-          padding: 8px 16px;
+          padding: 6px 14px;
           border-radius: 20px;
-          font-size: 0.85rem;
-          font-weight: 700;
+          font-size: 0.8rem;
+          font-weight: 600;
           cursor: pointer;
           user-select: none;
           -webkit-tap-highlight-color: transparent;
-          transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--surface-border, rgba(255,255,255,0.08));
+          transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.15);
           color: var(--text-muted, #94a3b8);
           display: flex;
           align-items: center;
-          gap: 8px;
-          max-width: 180px;
+          gap: 6px;
+          max-width: 160px;
+        }
+        .filter-chip:active {
+          transform: scale(0.96);
         }
         .filter-chip.active {
           background: rgba(16, 185, 129, 0.12);
@@ -388,15 +376,15 @@ export default function HistoryView(props) {
         }
 
         .led-wrapper {
-          width: 12px;
+          width: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
         }
         .led-ring {
-          width: 8px;
-          height: 8px;
+          width: 6px;
+          height: 6px;
           border-radius: 50%;
           transition: all 0.25s ease;
         }
@@ -410,7 +398,6 @@ export default function HistoryView(props) {
           opacity: 0.6;
         }
 
-        /* ULTRA LOW-PROFILE: Altura mínima al cerrar (9px 14px), respira al abrir (14px 14px) */
         .history-card {
           background: rgba(255, 255, 255, 0.03);
           padding: 9px 14px;
@@ -437,7 +424,6 @@ export default function HistoryView(props) {
           border-left-color: var(--primary, #10b981);
         }
 
-        /* ACORDEÓN FLUIDO */
         .history-accordion {
           display: grid;
           grid-template-rows: 0fr;
@@ -477,17 +463,17 @@ export default function HistoryView(props) {
         </p>
       </div>
 
-      {/* === BARRA HORIZONTAL (BOTÓN CIRCULAR + CARRUSEL BLINDADO) === */}
+      {/* === BARRA HORIZONTAL MINIATURIZADA (WHATSAPP STYLE) === */}
       <div className="history-filter-layout">
         
-        {/* BOTÓN CIRCULAR MINIMALISTA: VER TODO */}
+        {/* BOTÓN CIRCULAR MINI 30x30 */}
         <button
           type="button"
           className={`btn-circle-all ${selectedFilter === 'ALL' ? 'active' : ''}`}
           onClick={() => handleFilterClick('ALL')}
           title="Mostrar todo el historial"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <line x1="8" y1="6" x2="21" y2="6"></line>
             <line x1="8" y1="12" x2="21" y2="12"></line>
             <line x1="8" y1="18" x2="21" y2="18"></line>
@@ -497,7 +483,7 @@ export default function HistoryView(props) {
           </svg>
         </button>
 
-        {/* CARRUSEL CON SOMBRAS SUTILES (0.12) Y BLOQUEO NATíVO ANTI-PÁGINA */}
+        {/* CARRUSEL CHIPS FINOS (26px) + BLOQUEO DE GESTOS NATIVOS */}
         <div className={`carousel-shadow-wrapper ${scrollShadows.left ? 'show-left' : ''} ${scrollShadows.right ? 'show-right' : ''}`}>
           <div
             ref={tabsScrollRef}
@@ -532,7 +518,7 @@ export default function HistoryView(props) {
         </div>
       </div>
 
-      {/* === CONTENEDOR PRINCIPAL GLASS-PANEL (Separación compacta de 6px) === */}
+      {/* === CONTENEDOR PRINCIPAL GLASS-PANEL (Separación ultra compacta de 6px) === */}
       <div key={selectedFilter} className="glass-panel history-content-transition" style={{ padding: '12px 14px' }}>
         {filteredHistory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '28px 10px' }}>
@@ -564,16 +550,13 @@ export default function HistoryView(props) {
                   className={`history-card ${isActive ? 'is-active' : ''} ${isExpanded ? 'is-open' : ''}`}
                   onClick={() => toggleExpand(itemId)}
                 >
-                  {/* === VISTA COMPACTA ULTRA LOW-PROFILE (Separación mínima de 1px) === */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                     
-                    {/* FILA 1: Nombre del Sector (1.05rem) + Pastilla de Estado */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                       <h4 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main, #ffffff)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
                         {sectorTitle}
                       </h4>
 
-                      {/* PASTILLA BLINDADA + FLECHA DESPLEGABLE */}
                       <div className="flex-shrink-zero" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <div style={{
                           minWidth: '110px',
@@ -600,7 +583,6 @@ export default function HistoryView(props) {
                           <span>{isActive ? 'PRENDIDO' : 'FINALIZADO'}</span>
                         </div>
 
-                        {/* FLECHA DESPLEGABLE */}
                         <div style={{
                           width: '22px', height: '22px', borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -614,14 +596,12 @@ export default function HistoryView(props) {
                       </div>
                     </div>
 
-                    {/* FILA 2: Resumen Temporal Limpio (0.82rem, protegido con nowrap) */}
                     <div style={{ fontSize: '0.82rem', color: 'var(--text-muted, #94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {startData.date ? `${startData.date} • ` : ''}<strong style={{ color: 'var(--text-main, #ffffff)', fontWeight: '600' }}>{startData.timeShort} hs</strong>
                     </div>
 
                   </div>
 
-                  {/* === VISTA EXPANDIDA (FICHA TÉCNICA DE AUDITORÍA) === */}
                   <div className={`history-accordion ${isExpanded ? 'expanded' : ''}`}>
                     <div className="history-accordion-content">
                       
