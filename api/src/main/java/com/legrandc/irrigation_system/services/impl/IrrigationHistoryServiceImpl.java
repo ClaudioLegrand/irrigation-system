@@ -103,7 +103,7 @@ public class IrrigationHistoryServiceImpl implements IrrigationHistoryService {
             }
 
             IrrigationHistory openHistory = historyRepository
-                    .findFirstBySectorIdAndEndDateTimeIsNullOrderByStartDateTimeDesc(sector.getId()).orElseThrow(() -> new RuntimeException("No hay un riego abierto para este sector"));
+                    .findFirstBySectorIdAndEndDateTimeIsNullOrderByStartDateTimeDesc(sector.getId()).orElseThrow(() -> new RuntimeException("There is no open irrigation for this sector"));
 
             openHistory.setEndDateTime(LocalDateTime.now());
             historyRepository.save(openHistory);

@@ -6,8 +6,11 @@ import com.legrandc.irrigation_system.dtos.sector.SectorResponse;
 import com.legrandc.irrigation_system.dtos.sector.SectorStateRequest;
 import com.legrandc.irrigation_system.exceptions.ResourceNotFoundException;
 import com.legrandc.irrigation_system.models.IrrigationConfiguration;
+import com.legrandc.irrigation_system.models.IrrigationHistory;
+import com.legrandc.irrigation_system.models.OriginOrder;
 import com.legrandc.irrigation_system.models.Sector;
 import com.legrandc.irrigation_system.models.SectorState;
+import com.legrandc.irrigation_system.repository.IrrigationHistoryRepository;
 import com.legrandc.irrigation_system.repository.SectorRepository;
 import com.legrandc.irrigation_system.services.IrrigationConfigurationService;
 import com.legrandc.irrigation_system.services.SectorService;
@@ -24,6 +27,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,9 +41,13 @@ public class SectorServiceImpl implements SectorService {
     @Autowired
     private final IrrigationConfigurationService irrigationConfigurationService;
 
-    public SectorServiceImpl(SectorRepository sectorRepository, IrrigationConfigurationService irrigationConfigurationService) {
+    @Autowired
+    private final IrrigationHistoryRepository historyRepository;
+
+    public SectorServiceImpl(SectorRepository sectorRepository, IrrigationConfigurationService irrigationConfigurationService, IrrigationHistoryRepository historyRepository) {
         this.sectorRepository = sectorRepository;
         this.irrigationConfigurationService = irrigationConfigurationService;
+        this.historyRepository = historyRepository;
     }
 
     @Override
@@ -105,6 +113,21 @@ public class SectorServiceImpl implements SectorService {
         sector.setCurrentState(request.getState());
         Sector updatedSector = sectorRepository.save(sector);
 
+        if (request.getState().toString().equals("ACTIVE")) {
+
+            IrrigationHistory newHistory = new IrrigationHistory();
+            newHistory.setSector(sector);
+            newHistory.setStartDateTime(LocalDateTime.now());
+            newHistory.setOriginOrder(OriginOrder.MANUAL_APP);
+            historyRepository.save(newHistory);
+        } else {
+            historyRepository.findFirstBySectorIdAndEndDateTimeIsNullOrderByStartDateTimeDesc(sector.getId())
+                .ifPresent(history -> {
+                    history.setEndDateTime(LocalDateTime.now());
+                    historyRepository.save(history);
+                });
+        }
+        
         sendSignalToHardware(sector, request.getState());
 
         return toResponse(updatedSector);
@@ -159,7 +182,7 @@ public class SectorServiceImpl implements SectorService {
         } catch (Exception e) {
             
             System.err.println("Error: No se pudo contactar al hardware en la IP: " + hardwareIp);
-            throw new RuntimeException("El dispositivo central no responde. Verifique su conexión.");
+                // throw new RuntimeException("El dispositivo central no responde. Verifique su conexión.");
         }
     }
 
