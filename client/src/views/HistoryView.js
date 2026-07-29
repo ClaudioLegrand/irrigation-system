@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 export default function HistoryView(props) {
   const appData = props.appData || props || {};
@@ -9,6 +9,11 @@ export default function HistoryView(props) {
 
   const [expandedId, setExpandedId] = useState(null);
   const [selectedFilter, setSelectedFilter] = useState('ALL');
+  
+  // NUEVOS ESTADOS: Filtro de Mes y Límite de Paginación
+  const [selectedMonth, setSelectedMonth] = useState('ALL');
+  const [visibleLimit, setVisibleLimit] = useState(20);
+  const [isMonthMenuOpen, setIsMonthMenuOpen] = useState(false);
 
   const [scrollShadows, setScrollShadows] = useState({ left: false, right: false });
   const tabsScrollRef = useRef(null);
@@ -77,7 +82,15 @@ export default function HistoryView(props) {
       return; 
     }
     setSelectedFilter(filterId);
+    setVisibleLimit(20); // Reseteamos la paginación al cambiar de pestaña
     setExpandedId(null);
+  };
+
+  const handleMonthChange = (monthValue) => {
+    setSelectedMonth(monthValue);
+    setVisibleLimit(20); // Reseteamos la paginación al cambiar de mes
+    setExpandedId(null);
+    setIsMonthMenuOpen(false); // Cerramos el menú al elegir
   };
 
   const toggleExpand = (id) => {
@@ -172,6 +185,14 @@ export default function HistoryView(props) {
     return 0;
   };
 
+  // NUEVA LÓGICA: Obtener el tiempo de "Última Actividad" (Prioriza el fin si ya terminó)
+  const getSortTime = (item) => {
+    const tStart = parseToTimestamp(item.start_date_time || item.startDateTime || item.startTime || item.start_time || item.timestamp || item.created_at || item.createdAt);
+    const tEnd = parseToTimestamp(item.end_date_time || item.endDateTime || item.endTime || item.end_time);
+    // Retorna el mayor de los dos (El que haya ocurrido más recientemente)
+    return tEnd > tStart ? tEnd : tStart;
+  };
+
   const getDuration = (item) => {
     const dur = item.durationMinutes || item.duration_minutes || item.duration || item.duracion || item.duracion_minutos || item.minutes || item.minutos;
     if (dur !== undefined && dur !== null && dur !== '') return `${dur} min`;
@@ -191,27 +212,44 @@ export default function HistoryView(props) {
     const trigger = item.origin_order || item.originOrder || item.triggerSource || item.trigger_source || item.triggeredBy || item.triggered_by || item.origen || item.source || item.tipo || item.type || 'MANUAL_APP';
     const lower = String(trigger).toLowerCase();
     
-    if (lower.includes('manual') || lower.includes('app') || lower.includes('user') || lower.includes('usuario') || lower.includes('web')) {
-      return 'Manual (Aplicación)';
-    }
-    if (lower.includes('schedul') || lower.includes('routin') || lower.includes('auto') || lower.includes('rutina') || lower.includes('program') || lower.includes('timer') || lower.includes('cron')) {
-      return 'Automático (Rutina)';
-    }
-    if (lower.includes('hard') || lower.includes('button') || lower.includes('boton') || lower.includes('fisi') || lower.includes('physic') || lower.includes('switch') || lower.includes('sensor')) {
-      return 'Botón Físico';
-    }
-    if (lower.includes('api') || lower.includes('system') || lower.includes('sistema') || lower.includes('server')) {
-      return 'Sistema (Automático)';
-    }
+    if (lower.includes('manual') || lower.includes('app') || lower.includes('user') || lower.includes('usuario') || lower.includes('web')) return 'Manual (Aplicación)';
+    if (lower.includes('schedul') || lower.includes('routin') || lower.includes('auto') || lower.includes('rutina') || lower.includes('program') || lower.includes('timer') || lower.includes('cron')) return 'Automático (Rutina)';
+    if (lower.includes('hard') || lower.includes('button') || lower.includes('boton') || lower.includes('fisi') || lower.includes('physic') || lower.includes('switch') || lower.includes('sensor')) return 'Botón Físico';
+    if (lower.includes('api') || lower.includes('system') || lower.includes('sistema') || lower.includes('server')) return 'Sistema (Automático)';
     return 'Manual (Aplicación)';
   };
 
-  const validHistory = (rawHistory || []).filter(item => item !== null && typeof item === 'object');
-  const sortedHistory = [...validHistory].sort((a, b) => {
-    const tA = parseToTimestamp(a.start_date_time || a.startDateTime || a.startTime || a.start_time || a.timestamp || a.created_at || a.createdAt);
-    const tB = parseToTimestamp(b.start_date_time || b.startDateTime || b.startTime || b.start_time || b.timestamp || b.created_at || b.createdAt);
-    return tB - tA;
-  });
+  // === OPTIMIZACIÓN DE MEMORIA (CACHÉ) ===
+  const validHistory = useMemo(() => {
+    return (rawHistory || []).filter(item => item !== null && typeof item === 'object');
+  }, [rawHistory]);
+  
+  // Extraemos todos los meses únicos del historial ("YYYY-MM")
+  const availableMonths = useMemo(() => {
+    const months = new Set();
+    validHistory.forEach(item => {
+       const t = getSortTime(item);
+       if (t > 0) {
+         const d = new Date(t);
+         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+         months.add(key);
+       }
+    });
+    return Array.from(months).sort().reverse(); // Ordenados de más reciente a más viejo
+  }, [validHistory]);
+
+  const formatMonthLabel = (YYYYMM, isShort = false) => {
+    if (!YYYYMM) return '';
+    const [year, month] = YYYYMM.split('-');
+    const date = new Date(year, parseInt(month, 10) - 1, 1);
+    let monthName = date.toLocaleDateString('es-ES', { month: isShort ? 'short' : 'long' }).replace('.', '');
+    return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+  };
+
+  // 1. ORDENAMOS EL HISTORIAL POR ÚLTIMA ACTIVIDAD (Fin o Inicio)
+  const sortedHistory = useMemo(() => {
+    return [...validHistory].sort((a, b) => getSortTime(b) - getSortTime(a));
+  }, [validHistory]);
 
   const checkIsActive = (item, index) => {
     if (item.active === true || item.activo === true || item.isRunning === true || item.is_running === true || item.prendido === true) return true;
@@ -220,42 +258,61 @@ export default function HistoryView(props) {
     const sector = getSectorObj(item);
     if (sector) {
       const st = sector.current_state || sector.currentState || sector.status || sector.state || sector.estado || sector.activo || sector.running;
-      
       if (st !== undefined && st !== null) {
-        const isSectorRunning = (st === true || st === 1 || st === '1' || 
-          ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'EJECUTANDO', 'IN_PROGRESS', 'TRUE'].includes(String(st).trim().toUpperCase()));
-        
+        const isSectorRunning = (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
         if (isSectorRunning) {
           const secIdStr = String(item.sector_id || item.sectorId || item.id_sector);
           const firstIdxForSector = sortedHistory.findIndex(row => String(row.sector_id || row.sectorId || row.id_sector) === secIdStr);
-          
-          if (index === firstIdxForSector) {
-            return true;
-          }
+          if (index === firstIdxForSector) return true;
         }
       }
     }
-
     return false;
   };
 
-  const filteredHistory = sortedHistory.filter(item => {
-    if (selectedFilter === 'ALL') return true;
-    
-    const secObj = getSectorObj(item);
-    if (secObj && String(secObj.id) === String(selectedFilter)) return true;
-    
-    const itemSecName = getSectorName(item);
-    const filterSecObj = appData.sectors?.find(s => String(s.id) === String(selectedFilter));
-    if (filterSecObj && itemSecName === filterSecObj.name) return true;
-    
-    return false;
-  });
+  const filteredHistory = useMemo(() => {
+    return sortedHistory.filter(item => {
+      // Filtro 1: Sector
+      let passSector = true;
+      if (selectedFilter !== 'ALL') {
+        const secObj = getSectorObj(item);
+        if (secObj && String(secObj.id) === String(selectedFilter)) {
+          passSector = true;
+        } else {
+          const itemSecName = getSectorName(item);
+          const filterSecObj = appData.sectors?.find(s => String(s.id) === String(selectedFilter));
+          if (filterSecObj && itemSecName === filterSecObj.name) passSector = true;
+          else passSector = false;
+        }
+      }
+      
+      // Filtro 2: Mes
+      let passMonth = true;
+      if (selectedMonth !== 'ALL') {
+         const t = getSortTime(item);
+         if (t > 0) {
+            const d = new Date(t);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (key !== selectedMonth) passMonth = false;
+         } else {
+            passMonth = false;
+         }
+      }
+
+      return passSector && passMonth;
+    });
+  }, [sortedHistory, selectedFilter, selectedMonth, appData.sectors]);
+
+  // APLICAMOS EL LÍMITE DE RENDERIZADO (Previene el Lag)
+  const displayedHistory = useMemo(() => {
+    return filteredHistory.slice(0, visibleLimit);
+  }, [filteredHistory, visibleLimit]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
       <style>{`
+        /* Estilos heredados base */
         .history-content-transition {
           animation: slideFadeInHistory 0.60s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
@@ -274,7 +331,6 @@ export default function HistoryView(props) {
           margin-top: 4px;
         }
         
-        /* BOTÓN CIRCULAR (32x32px - Más claro) */
         .btn-circle-all {
           flex-shrink: 0;
           width: 32px;
@@ -342,7 +398,6 @@ export default function HistoryView(props) {
           display: none;
         }
 
-        /* PASTILLAS WHATSAPP STYLE (Un toque más grandes y claras) */
         .filter-chip {
           flex-shrink: 0;
           padding: 6px 14px;
@@ -449,16 +504,161 @@ export default function HistoryView(props) {
         .flex-shrink-zero {
           flex-shrink: 0 !important;
         }
+
+        /* ANIMACIÓN DE CASCADA SUAVE */
+        .history-card-animate {
+          animation: slideFadeInCard 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+        }
+        @keyframes slideFadeInCard {
+          0% { opacity: 0; transform: translateY(12px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* NUEVOS ESTILOS: Select Custom de Mes y Botón Cargar Más */
+        .custom-dropdown-btn {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: var(--text-main);
+          padding: 6px 10px; /* Reducimos padding para ahorrar espacio */
+          border-radius: 12px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          outline: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          min-width: 110px; /* Ancho ultra compacto */
+          max-width: 110px; /* Bloqueamos el crecimiento para siempre */
+          gap: 6px;
+          transition: all 0.2s ease;
+        }
+        .custom-dropdown-btn:hover {
+          background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .dropdown-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          z-index: 40;
+        }
+        
+        .dropdown-menu {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          background: #1e293b;
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 16px;
+          padding: 6px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+          z-index: 50;
+          min-width: 140px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          animation: dropIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transform-origin: top right;
+        }
+        @keyframes dropIn {
+          0% { opacity: 0; transform: scale(0.95) translateY(-5px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        
+        .dropdown-item {
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: transparent;
+          border: none;
+          color: var(--text-main);
+          font-size: 0.85rem;
+          font-weight: 600;
+          text-align: left;
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+        .dropdown-item:hover {
+          background: rgba(255,255,255,0.1);
+        }
+        .dropdown-item.active {
+          color: var(--primary);
+          background: rgba(16, 185, 129, 0.12);
+        }
+
+        .btn-load-more {
+          width: 100%;
+          padding: 12px;
+          border-radius: 14px;
+          border: 1px dashed rgba(255,255,255,0.2);
+          background: rgba(255,255,255,0.03);
+          color: var(--text-muted);
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          margin-top: 6px;
+        }
+        .btn-load-more:hover {
+          background: rgba(255,255,255,0.06);
+          color: var(--text-main);
+          border-color: rgba(255,255,255,0.3);
+        }
+        .btn-load-more:active {
+          transform: scale(0.98);
+        }
       `}</style>
 
       {/* === JERARQUÍA EXTERIOR === */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 4px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Historial de Riego {filteredHistory.length > 0 && <span style={{ color: 'var(--primary, #10b981)', fontWeight: '800' }}>({filteredHistory.length})</span>}
-          </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 4px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+          
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <div style={{ 
+              fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted, #94a3b8)', 
+              textTransform: 'uppercase', letterSpacing: '0.5px',
+              display: 'flex', alignItems: 'center', gap: '6px'
+            }}>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>HISTORIAL DE RIEGO</span>
+              {filteredHistory.length > 0 && <span style={{ color: 'var(--primary, #10b981)', fontWeight: '800', flexShrink: 0 }}>({filteredHistory.length})</span>}
+            </div>
+          </div>
+          
+          {/* NUEVO: SELECTOR DE MESES CUSTOMIZADO */}
+          {availableMonths.length > 0 && (
+            <div style={{ flexShrink: 0, position: 'relative' }}>
+              <button 
+                className="custom-dropdown-btn"
+                onClick={() => setIsMonthMenuOpen(!isMonthMenuOpen)}
+                title="Filtrar por mes"
+              >
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {selectedMonth === 'ALL' ? 'Histórico' : formatMonthLabel(selectedMonth, true)}
+                </span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: 'transform 0.2s', transform: isMonthMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              
+              {isMonthMenuOpen && (
+                <>
+                  <div className="dropdown-overlay" onClick={() => setIsMonthMenuOpen(false)}></div>
+                  <div className="dropdown-menu">
+                    <button className={`dropdown-item ${selectedMonth === 'ALL' ? 'active' : ''}`} onClick={() => handleMonthChange('ALL')}>
+                      Histórico
+                    </button>
+                    {availableMonths.map(m => (
+                      <button key={m} className={`dropdown-item ${selectedMonth === m ? 'active' : ''}`} onClick={() => handleMonthChange(m)}>
+                        {formatMonthLabel(m, false)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
-        <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>
+
+        {/* SUBTÍTULO EN SU PROPIA LÍNEA PARA NO CORTARSE */}
+        <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8, width: '100%' }}>
           Registro de las últimas actividades
         </p>
       </div>
@@ -466,7 +666,6 @@ export default function HistoryView(props) {
       {/* === BARRA HORIZONTAL MINIATURIZADA (WHATSAPP STYLE) === */}
       <div className="history-filter-layout">
         
-        {/* BOTÓN CIRCULAR MINI 30x30 */}
         <button
           type="button"
           className={`btn-circle-all ${selectedFilter === 'ALL' ? 'active' : ''}`}
@@ -483,7 +682,6 @@ export default function HistoryView(props) {
           </svg>
         </button>
 
-        {/* CARRUSEL CHIPS FINOS (26px) + BLOQUEO DE GESTOS NATIVOS */}
         <div className={`carousel-shadow-wrapper ${scrollShadows.left ? 'show-left' : ''} ${scrollShadows.right ? 'show-right' : ''}`}>
           <div
             ref={tabsScrollRef}
@@ -518,22 +716,22 @@ export default function HistoryView(props) {
         </div>
       </div>
 
-      {/* === CONTENEDOR PRINCIPAL GLASS-PANEL (Separación ultra compacta de 6px) === */}
-      <div key={selectedFilter} className="glass-panel history-content-transition" style={{ padding: '12px 14px' }}>
-        {filteredHistory.length === 0 ? (
+      {/* === CONTENEDOR PRINCIPAL === */}
+      <div className="glass-panel history-content-transition" style={{ padding: '12px 14px' }}>
+        {displayedHistory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '28px 10px' }}>
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted, #64748b)', opacity: 0.5, margin: '0 auto 8px auto', display: 'block' }}>
               <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
             </svg>
             <p className="text-muted" style={{ fontSize: '0.95rem', margin: 0 }}>
               {selectedFilter === 'ALL' 
-                ? 'No hay registros de actividad recientes en la base de datos.' 
+                ? 'No hay registros de actividad para este periodo.' 
                 : 'No hay actividad registrada para este sector.'}
             </p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {filteredHistory.map((item, index) => {
+            {displayedHistory.map((item, index) => {
               const itemId = item.id || item._id || item.logId || index;
               const isExpanded = expandedId === itemId;
               const isActive = checkIsActive(item, index);
@@ -547,8 +745,9 @@ export default function HistoryView(props) {
               return (
                 <div 
                   key={itemId}
-                  className={`history-card ${isActive ? 'is-active' : ''} ${isExpanded ? 'is-open' : ''}`}
+                  className={`history-card history-card-animate ${isActive ? 'is-active' : ''} ${isExpanded ? 'is-open' : ''}`}
                   onClick={() => toggleExpand(itemId)}
+                  style={{ animationDelay: `${(index % 20) * 0.03}s` }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                     
@@ -651,6 +850,16 @@ export default function HistoryView(props) {
                 </div>
               );
             })}
+
+            {/* NUEVO: BOTÓN CARGAR MÁS */}
+            {filteredHistory.length > visibleLimit && (
+              <button 
+                className="btn-load-more"
+                onClick={() => setVisibleLimit(prev => prev + 20)}
+              >
+                Ver más actividad ({filteredHistory.length - visibleLimit} restantes)
+              </button>
+            )}
           </div>
         )}
       </div>
