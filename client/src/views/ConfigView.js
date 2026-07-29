@@ -6,9 +6,10 @@ export default function ConfigView({ appData }) {
     handleCreateSector, newSector, setNewSector,
     handleToggleConfiguration, handleDeleteConfiguration,
     newConfiguration, setNewConfiguration,
-    handleUpdateRoutine,
+    handleUpdateRoutine, handleUpdateSector,
     lastSectorId, setLastSectorId, handleToggleAllSectors,
-    handleToggleAllConfigurations
+    handleToggleAllConfigurations,
+    handleDeleteSector // <-- Añadimos esto aquí
   } = appData;
 
   const [localTab, setLocalTab] = useState(sectors[0]?.id || 'NEW');
@@ -35,16 +36,17 @@ export default function ConfigView({ appData }) {
   const [editData, setEditData] = useState({ startTime: '', durationMinutes: 15 });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
-
-  // REFERENCIAS PARA AUTO-SCROLL
-  const routineRefs = useRef({});
-  const scrollContainerRef = useRef(null);
-  const isProgrammaticScroll = useRef(false);
   
-  const [scrollShadows, setScrollShadows] = useState({ top: false, bottom: false });
-  const [edgeBounce, setEdgeBounce] = useState('');
+  // NUEVO: Estado para editar el nombre del sector fluidamente
+  const [isEditingSectorName, setIsEditingSectorName] = useState(false);
+  const [editedSectorName, setEditedSectorName] = useState('');
 
-  // ESTADOS Y REFERENCIAS PARA LA BARRA HORIZONTAL CON DEGRADÉ Y ESCUDO ANTI-ARRASTRE
+  // NUEVO: Estado para el borrado del sector
+  const [confirmDeleteSectorId, setConfirmDeleteSectorId] = useState(null);
+
+  const routineRefs = useRef({});
+  const isProgrammaticScroll = useRef(false);
+
   const [scrollShadowsTabs, setScrollShadowsTabs] = useState({ left: false, right: false });
   const tabsScrollRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -60,6 +62,8 @@ export default function ConfigView({ appData }) {
   useEffect(() => {
     cancelEditing();
     setSectorNameError('');
+    setIsEditingSectorName(false);
+    setConfirmDeleteSectorId(null); // Resetea el botón de borrar al cambiar de pestaña
   }, [selectedTab]);
 
   const selectedSectorObj = sectors.find(s => s.id === selectedTab);
@@ -79,49 +83,6 @@ export default function ConfigView({ appData }) {
     return timeA.localeCompare(timeB);
   });
 
-  // LÓGICA DE SOMBRAS VERTICALES (RUTINAS)
-  const checkScrollShadows = () => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    const isAtTop = scrollTop <= 2;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight <= 2;
-    const hasScroll = scrollHeight > clientHeight;
-    setScrollShadows({
-      top: !isAtTop && hasScroll,
-      bottom: !isAtBottom && hasScroll
-    });
-  };
-
-  useEffect(() => {
-    checkScrollShadows();
-    const timer = setTimeout(checkScrollShadows, 350);
-    return () => clearTimeout(timer);
-  }, [selectedTab, sortedConfigs.length, editingRoutineId]);
-
-  const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtTop = scrollTop <= 2;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight <= 2;
-    const hasScroll = scrollHeight > clientHeight;
-
-    setScrollShadows({
-      top: !isAtTop && hasScroll,
-      bottom: !isAtBottom && hasScroll
-    });
-
-    if (isProgrammaticScroll.current) return;
-
-    if (isAtTop && scrollTop === 0 && edgeBounce !== 'top' && hasScroll) {
-      setEdgeBounce('top');
-      setTimeout(() => setEdgeBounce(''), 300);
-    } else if (isAtBottom && edgeBounce !== 'bottom' && hasScroll) {
-      setEdgeBounce('bottom');
-      setTimeout(() => setEdgeBounce(''), 300);
-    }
-  };
-
-  // LÓGICA DE SOMBRAS HORIZONTALES Y ESCUDO ANTI-ARRASTRE (PESTAÑAS SECTORES)
   const checkHorizontalScrollTabs = () => {
     const el = tabsScrollRef.current;
     if (!el) return;
@@ -279,6 +240,18 @@ export default function ConfigView({ appData }) {
     handleSetTab(sectors[0]?.id || 'NEW');
   };
 
+  const handleSaveSectorName = async (e) => {
+    if (e) e.stopPropagation();
+    if (!editedSectorName.trim()) return;
+    
+    if (handleUpdateSector) {
+      await handleUpdateSector(selectedTab, { name: editedSectorName });
+    } else {
+      console.warn("La función handleUpdateSector no está provista por appData.");
+    }
+    setIsEditingSectorName(false);
+  };
+
   const startEditing = (routine) => {
     setLocalError('');
     setConfirmDeleteId(null); 
@@ -289,15 +262,12 @@ export default function ConfigView({ appData }) {
     });
 
     isProgrammaticScroll.current = true;
-
     setTimeout(() => {
       const element = routineRefs.current[routine.id];
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      setTimeout(() => {
-        isProgrammaticScroll.current = false;
-      }, 500);
+      setTimeout(() => { isProgrammaticScroll.current = false; }, 500);
     }, 160);
   };
 
@@ -331,10 +301,14 @@ export default function ConfigView({ appData }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '120px' }}>
       
       <style>{`
-        /* BARRA HORIZONTAL MINIATURIZADA (WHATSAPP STYLE) Y BLOQUEO DE GESTOS NATIVOS */
+        /* NUEVO: REGLA MAESTRA DE CAJA PARA EVITAR CORTES EN FORMULARIOS */
+        *, *::before, *::after {
+          box-sizing: border-box;
+        }
+
         .history-filter-layout {
           display: flex;
           align-items: center;
@@ -345,7 +319,6 @@ export default function ConfigView({ appData }) {
           margin-top: 4px;
         }
 
-        /* BOTÓN FIJO CIRCULAR (32x32px - Más claro) */
         .btn-fixed-new {
           flex-shrink: 0 !important;
           width: 32px;
@@ -373,7 +346,6 @@ export default function ConfigView({ appData }) {
           transform: scale(0.92);
         }
 
-        /* SOMBRAS SUTILES (rgba 0.12) EN EL CARRUSEL */
         .carousel-shadow-wrapper {
           position: relative;
           flex: 1;
@@ -411,7 +383,6 @@ export default function ConfigView({ appData }) {
           display: none;
         }
 
-        /* CHIPS DE NAVEGACIÓN (Un toque más grandes y claros) */
         .chip {
           flex-shrink: 0;
           padding: 6px 14px;
@@ -471,7 +442,6 @@ export default function ConfigView({ appData }) {
           opacity: 0.6;
         }
 
-        /* MICRO BOTONES DE ACCIÓN GLOBAL (Activar/Pausar Todos: 28x28px) */
         .btn-icon-action {
           display: flex;
           align-items: center;
@@ -496,6 +466,12 @@ export default function ConfigView({ appData }) {
           background: rgba(255, 255, 255, 0.15) !important;
           color: var(--primary) !important;
           border-color: var(--primary) !important;
+        }
+        .btn-icon-action.active-edit {
+          color: var(--primary);
+          border-color: var(--primary);
+          background: rgba(16, 185, 129, 0.12);
+          box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
         }
 
         .card-title-shield {
@@ -536,63 +512,12 @@ export default function ConfigView({ appData }) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        .scroll-shadow-wrapper {
-          position: relative;
-          border-radius: 16px;
-          transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-        .scroll-shadow-wrapper.bounce-top {
-          transform: translateY(4px);
-        }
-        .scroll-shadow-wrapper.bounce-bottom {
-          transform: translateY(-4px);
-        }
-        .scroll-shadow-wrapper::before, .scroll-shadow-wrapper::after {
-          content: '';
-          position: absolute;
-          left: 0;
-          right: 0;
-          height: 14px;
-          pointer-events: none;
-          z-index: 2;
-          transition: opacity 0.25s ease;
-        }
-        .scroll-shadow-wrapper::before {
-          top: 0;
-          background: linear-gradient(to bottom, rgba(0,0,0,0.18), transparent);
-          opacity: 0;
-        }
-        .scroll-shadow-wrapper::after {
-          bottom: 0;
-          background: linear-gradient(to top, rgba(0,0,0,0.18), transparent);
-          opacity: 0;
-        }
-        .scroll-shadow-wrapper.show-top::before { opacity: 1; }
-        .scroll-shadow-wrapper.show-bottom::after { opacity: 1; }
-
+        /* SCROLL ORGÁNICO: Sin límites de altura */
         .routines-scroll-area {
-          max-height: 350px;
-          overflow-y: auto;
-          overscroll-behavior: contain;
-          -webkit-overflow-scrolling: touch;
           display: flex;
           flex-direction: column;
           gap: 10px;
-          padding: 2px 4px 2px 2px;
-        }
-        .routines-scroll-area::-webkit-scrollbar {
-          width: 5px;
-        }
-        .routines-scroll-area::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.02);
-          border-radius: 10px;
-        }
-        .routines-scroll-area::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.15);
-          border-radius: 10px;
-        }
-        .routines-scroll-area::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.3);
+          padding: 2px 0px;
         }
 
         .accordion-wrapper {
@@ -678,6 +603,28 @@ export default function ConfigView({ appData }) {
           35% { opacity: 0; transform: scale(0.95) translateY(-2px); }
           100% { opacity: 0; max-height: 0; margin-bottom: 0; transform: scale(0.9) translateY(-8px); }
         }
+        
+        /* ESTILO PARA EL INPUT EDITABLE EN LÍNEA (CORREGIDO PARA NO SALTAR) */
+        .inline-edit-input {
+          width: 100%;
+          font-size: 1.4rem;
+          font-weight: 700;
+          line-height: 1.25;
+          color: var(--text-main);
+          background: rgba(0,0,0,0.15);
+          border: 1px solid var(--primary);
+          border-radius: 8px;
+          padding: 2px 8px; /* Reducido para no estirar la tarjeta */
+          margin: 0; /* Eliminado el margin-bottom que empujaba la tarjeta */
+          height: 32px; /* Altura forzada similar al texto original */
+          outline: none;
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+          transition: all 0.2s ease;
+        }
+        .inline-edit-input:focus {
+          background: rgba(0,0,0,0.25);
+          box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
       `}</style>
 
       {/* === CABECERA DE SECTORES === */}
@@ -686,7 +633,6 @@ export default function ConfigView({ appData }) {
           <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Mis Sectores
           </span>
-          {/* MICRO BOTONES GLOBALES DE SECTORES (28x28) */}
           <div style={{ display: 'flex', gap: '6px' }}>
             <button 
               type="button"
@@ -713,9 +659,7 @@ export default function ConfigView({ appData }) {
           </div>
         </div>
 
-        {/* BARRA HORIZONTAL MINIATURIZADA (WHATSAPP STYLE) */}
         <div className="history-filter-layout">
-          
           <button 
             className={`btn-fixed-new ${selectedTab === 'NEW' ? 'active' : ''}`} 
             onClick={() => handleTabClick('NEW')}
@@ -762,44 +706,142 @@ export default function ConfigView({ appData }) {
       {selectedTab !== 'NEW' && selectedSectorObj && (
         <div key={selectedTab} className="sector-content-transition">
           
-          <div 
-            className="glass-panel interactive-card" 
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '84px', gap: '16px' }}
-            onClick={() => handleToggleSector(selectedSectorObj)}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 className="card-title-shield" title={selectedSectorObj.name}>
-                {selectedSectorObj.name}
-              </h3>
-              <p className="text-muted" style={{ fontSize: '0.95rem', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {selectedSectorObj.description || 'Sin descripción'}
-              </p>
+          <div style={{ position: 'relative' }}>
+            {/* === BARRA DE HERRAMIENTAS DEL SECTOR === */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px', paddingRight: '4px', gap: '8px' }}>
+              
+              {/* BOTÓN DE BORRAR SECTOR (Animado) */}
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirmDeleteSectorId === selectedTab) {
+                    if (handleDeleteSector) handleDeleteSector(selectedTab);
+                  } else {
+                    setConfirmDeleteSectorId(selectedTab);
+                  }
+                }}
+                onBlur={() => setConfirmDeleteSectorId(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  height: '28px',
+                  width: confirmDeleteSectorId === selectedTab ? '90px' : '28px',
+                  borderRadius: '14px',
+                  cursor: 'pointer',
+                  border: confirmDeleteSectorId === selectedTab ? 'none' : '1px solid var(--surface-border)',
+                  background: confirmDeleteSectorId === selectedTab ? 'var(--danger, #ef4444)' : 'rgba(255, 255, 255, 0.03)',
+                  color: confirmDeleteSectorId === selectedTab ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                  padding: 0,
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  fontWeight: '600',
+                  fontSize: '0.8rem'
+                }}
+                title={confirmDeleteSectorId === selectedTab ? "Confirmar" : "Eliminar Sector"}
+              >
+                {confirmDeleteSectorId === selectedTab ? (
+                  <span>¿Seguro?</span>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                )}
+              </button>
+
+              <button 
+                type="button"
+                className={`btn-icon-action ${isEditingSectorName ? 'active-edit' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isEditingSectorName) {
+                    handleSaveSectorName(e);
+                  } else {
+                    setEditedSectorName(selectedSectorObj.name);
+                    setIsEditingSectorName(true);
+                  }
+                }}
+                title={isEditingSectorName ? "Guardar nombre" : "Editar nombre"}
+              >
+                {isEditingSectorName ? (
+                  /* ICONO GUARDAR - Reducido a 14px para que coincida exactamente con el de editar */
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                ) : (
+                  /* ICONO EDITAR (14px) */
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                )}
+              </button>
             </div>
-            
-            <div className="flex-shrink-zero">
-              {(() => {
-                const isSectorEnabled = selectedSectorObj.enabled !== false;
-                return (
-                  <div style={{
-                    minWidth: '115px', 
-                    padding: '8px 14px',
-                    borderRadius: '20px',
-                    fontSize: '0.8rem',
-                    fontWeight: '700',
-                    letterSpacing: '0.5px',
-                    border: `1px solid ${isSectorEnabled ? 'var(--primary)' : 'var(--surface-border)'}`,
-                    background: isSectorEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.03)',
-                    color: isSectorEnabled ? 'var(--primary)' : 'var(--text-muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px'
-                  }}>
-                    <span className={`led-ring ${isSectorEnabled ? 'active' : 'paused'}`}></span>
-                    <span>{isSectorEnabled ? 'ACTIVO' : 'PAUSADO'}</span>
+
+            <div 
+              className="glass-panel interactive-card" 
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '84px', gap: '16px' }}
+              onClick={() => { if (!isEditingSectorName) handleToggleSector(selectedSectorObj); }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {isEditingSectorName ? (
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="text"
+                      value={editedSectorName}
+                      onChange={(e) => setEditedSectorName(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveSectorName(e);
+                        if (e.key === 'Escape') setIsEditingSectorName(false);
+                      }}
+                      autoFocus
+                      className="inline-edit-input"
+                    />
                   </div>
-                );
-              })()}
+                ) : (
+                  <h3 className="card-title-shield" title={selectedSectorObj.name}>
+                    {selectedSectorObj.name}
+                  </h3>
+                )}
+                
+                {selectedSectorObj.description && selectedSectorObj.description.trim() !== '' && (
+                  <p 
+                    className="text-muted" 
+                    title={selectedSectorObj.description} 
+                    style={{ fontSize: '0.95rem', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  >
+                    {selectedSectorObj.description}
+                  </p>
+                )}
+              </div>
+              
+              <div className="flex-shrink-zero" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {(() => {
+                  const isSectorEnabled = selectedSectorObj.enabled !== false;
+                  return (
+                    <div style={{
+                      minWidth: '100px', 
+                      padding: '8px 12px',
+                      borderRadius: '12px',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      letterSpacing: '0.5px',
+                      border: `1px solid ${isSectorEnabled ? 'var(--primary)' : 'var(--surface-border)'}`,
+                      background: isSectorEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                      color: isSectorEnabled ? 'var(--primary)' : 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}>
+                      <span className={`led-ring ${isSectorEnabled ? 'active' : 'paused'}`}></span>
+                      <span>{isSectorEnabled ? 'ACTIVO' : 'PAUSADO'}</span>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           </div>
 
@@ -811,7 +853,6 @@ export default function ConfigView({ appData }) {
               
               {sortedConfigs.length > 0 && typeof handleToggleAllConfigurations === 'function' && (
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {/* MICRO BOTONES GLOBALES DE RUTINAS (28x28) */}
                   <button 
                     type="button"
                     className="btn-icon-action"
@@ -823,7 +864,6 @@ export default function ConfigView({ appData }) {
                       <path d="m22 10-7.5 7.5L13 16"></path>
                     </svg>
                   </button>
-
                   <button 
                     type="button"
                     className="btn-icon-action"
@@ -843,86 +883,80 @@ export default function ConfigView({ appData }) {
               {sortedConfigs.length === 0 ? (
                 <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
               ) : (
-                <div className={`scroll-shadow-wrapper ${scrollShadows.top ? 'show-top' : ''} ${scrollShadows.bottom ? 'show-bottom' : ''} ${edgeBounce === 'top' ? 'bounce-top' : ''} ${edgeBounce === 'bottom' ? 'bounce-bottom' : ''}`}>
-                  <div 
-                    ref={scrollContainerRef}
-                    className="routines-scroll-area"
-                    onScroll={handleScroll}
-                  >
-                    {sortedConfigs.map((c) => {
-                      const isEditing = editingRoutineId === c.id;
-                      const isDeleting = deletingIds.includes(c.id);
-                      
-                      return (
-                        <div 
-                          key={c.id} 
-                          ref={el => routineRefs.current[c.id] = el}
-                          className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
-                          style={{ 
-                            background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
-                            opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
-                            transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer', flexShrink: 0
-                          }}
-                          onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                                {formatTime(c.startTime)}
-                              </h4>
-                              <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
-                                {c.durationMinutes} minutos
-                              </p>
-                            </div>
-                            
-                            {isEditing ? (
-                              <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
-                            ) : (
-                              <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
-                                <span className="switch-toggle__thumb" />
-                              </button>
-                            )}
+                <div className="routines-scroll-area">
+                  {sortedConfigs.map((c) => {
+                    const isEditing = editingRoutineId === c.id;
+                    const isDeleting = deletingIds.includes(c.id);
+                    
+                    return (
+                      <div 
+                        key={c.id} 
+                        ref={el => routineRefs.current[c.id] = el}
+                        className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
+                        style={{ 
+                          background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
+                          opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
+                          transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer', flexShrink: 0
+                        }}
+                        onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                              {formatTime(c.startTime)}
+                            </h4>
+                            <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
+                              {c.durationMinutes} minutos
+                            </p>
                           </div>
+                          
+                          {isEditing ? (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
+                          ) : (
+                            <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
+                              <span className="switch-toggle__thumb" />
+                            </button>
+                          )}
+                        </div>
 
-                          <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
-                            <div className="accordion-content">
-                              <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
-                                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
-                                </div>
-                                
-                                {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
-                                
-                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                  <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
-                                  <button 
-                                    type="button" 
-                                    onClick={(e) => { 
-                                      e.stopPropagation();
-                                      if (confirmDeleteId === c.id) {
-                                        setDeletingIds(prev => [...prev, c.id]);
-                                        setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
-                                      } else {
-                                        setConfirmDeleteId(c.id);
-                                      }
-                                    }} 
-                                    style={{ 
-                                      flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
-                                      border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
-                                      background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
-                                    }}
-                                  >
-                                    {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
-                                  </button>
-                                </div>
-                              </form>
-                            </div>
+                        <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
+                          <div className="accordion-content">
+                            <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
+                              <div style={{ display: 'flex', gap: '12px' }}>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
+                              </div>
+                              
+                              {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
+                              
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
+                                <button 
+                                  type="button" 
+                                  onClick={(e) => { 
+                                    e.stopPropagation();
+                                    if (confirmDeleteId === c.id) {
+                                      setDeletingIds(prev => [...prev, c.id]);
+                                      setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
+                                    } else {
+                                      setConfirmDeleteId(c.id);
+                                    }
+                                  }} 
+                                  style={{ 
+                                    flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
+                                    border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                                    background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
+                                  }}
+                                >
+                                  {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
+                                </button>
+                              </div>
+                            </form>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -933,7 +967,6 @@ export default function ConfigView({ appData }) {
               <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Nuevas Rutinas
               </span>
-              
               <button 
                 type="button"
                 onClick={handleAddRoutineRow}
@@ -951,22 +984,16 @@ export default function ConfigView({ appData }) {
               {localError && !editingRoutineId && <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', padding: '10px', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>{localError}</div>}
               
               <form onSubmit={onSaveBatchConfig} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                
                 {routineList.map((routine, index) => {
                   const isRemoving = removingRowIds.includes(routine.id);
-                  
                   return (
-                    <div 
-                      key={routine.id} 
-                      className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`} 
-                    >
+                    <div key={routine.id} className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`}>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
                         
                         <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
                           {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Hora</label>}
                           <input 
-                            type="time" 
-                            value={routine.startTime} 
+                            type="time" value={routine.startTime} 
                             onChange={e => handleChangeRoutineRow(routine.id, 'startTime', e.target.value)} 
                             className={routine.errorTime ? 'input-error' : ''}
                             style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
@@ -976,8 +1003,7 @@ export default function ConfigView({ appData }) {
                         <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
                           {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Min</label>}
                           <input 
-                            type="number" min="5" max="180" 
-                            value={routine.durationMinutes} 
+                            type="number" min="5" max="180" value={routine.durationMinutes} 
                             onChange={e => handleChangeRoutineRow(routine.id, 'durationMinutes', e.target.value)} 
                             className={routine.errorDuration ? 'input-error' : ''}
                             style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
@@ -989,8 +1015,6 @@ export default function ConfigView({ appData }) {
                             type="button" 
                             onClick={() => handleRemoveRoutineRow(routine.id)}
                             style={{ height: '42px', width: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease', flexShrink: 0 }}
-                            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.85)'}
-                            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
                             title="Eliminar fila"
                           >
                             ✕
@@ -999,16 +1023,10 @@ export default function ConfigView({ appData }) {
                       </div>
 
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        
                         <div style={{ flex: 1 }}>
                           <div className={`error-message-wrapper ${routine.errorTime ? 'show' : ''}`}>
                             <div className="error-message-content">
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                  <circle cx="12" cy="12" r="10"></circle>
-                                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                                </svg>
                                 <span>{routine.errorTime}</span>
                               </div>
                             </div>
@@ -1019,11 +1037,6 @@ export default function ConfigView({ appData }) {
                           <div className={`error-message-wrapper ${routine.errorDuration ? 'show' : ''}`}>
                             <div className="error-message-content">
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                  <circle cx="12" cy="12" r="10"></circle>
-                                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                                </svg>
                                 <span>{routine.errorDuration}</span>
                               </div>
                             </div>
@@ -1032,17 +1045,11 @@ export default function ConfigView({ appData }) {
 
                         {routineList.length > 1 && <div style={{ width: '42px', flexShrink: 0 }} />}
                       </div>
-
                     </div>
                   );
                 })}
 
-                <button 
-                  type="submit" 
-                  className="btn-primary" 
-                  style={{ padding: '14px', marginTop: '8px', opacity: isSaving ? 0.7 : 1, fontSize: '1rem' }} 
-                  disabled={isSaving}
-                >
+                <button type="submit" className="btn-primary" style={{ padding: '14px', marginTop: '8px', opacity: isSaving ? 0.7 : 1, fontSize: '1rem' }} disabled={isSaving}>
                   {isSaving ? 'Guardando...' : `Guardar ${routineList.length > 1 ? routineList.length + ' rutinas' : 'rutina'}`}
                 </button>
               </form>
@@ -1068,17 +1075,10 @@ export default function ConfigView({ appData }) {
                 }} 
                 placeholder="Ej. Patio trasero" 
                 className={sectorNameError ? 'input-error' : ''}
-                style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
               />
-              
               <div className={`error-message-wrapper ${sectorNameError ? 'show' : ''}`}>
                 <div className="error-message-content">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="8" x2="12" y2="12"></line>
-                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                    </svg>
                     <span>{sectorNameError}</span>
                   </div>
                 </div>

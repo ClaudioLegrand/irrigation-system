@@ -52,7 +52,7 @@ public class SectorServiceImpl implements SectorService {
 
     @Override
     public List<SectorResponse> getAllSectors() {
-        return sectorRepository.findAll().stream().map(this::toResponse).collect(Collectors.toList());
+        return sectorRepository.findByArchivedFalse().stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     @Override
@@ -76,7 +76,11 @@ public class SectorServiceImpl implements SectorService {
     @Override
     public void deleteSector(Long id) {
         Sector sector = findSectorOrThrow(id);
-        sectorRepository.delete(sector);
+    
+        sector.setArchived(true);
+        sector.setEnabled(false);
+
+        sectorRepository.save(sector);
     }
 
     @Override

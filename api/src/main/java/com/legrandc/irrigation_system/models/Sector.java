@@ -42,6 +42,8 @@ public class Sector {
     @OneToMany(mappedBy = "sector", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<IrrigationHistory> history = new ArrayList<>();
 
+    private Boolean archived = false;
+
     @Column(updatable = false)
     @CreationTimestamp
     private LocalDateTime createdAt;

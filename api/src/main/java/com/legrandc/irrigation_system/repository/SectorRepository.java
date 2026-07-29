@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface SectorRepository extends JpaRepository<Sector, Long> {
     List<Sector> findByNameContainingIgnoreCase(String name);
+
+    List<Sector> findByArchivedFalse();
 }

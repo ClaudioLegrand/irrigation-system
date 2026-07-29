@@ -405,6 +405,23 @@ export function useIrrigationApp() {
     }
   }, [sectors]);
 
+  // NUEVO: Función para eliminar (borrado lógico en tu backend)
+  const handleDeleteSector = useCallback(async (id) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/sectors/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Error al eliminar el sector');
+      
+      // Lo sacamos de la vista inmediatamente
+      setSectors((prev) => prev.filter((item) => item.id !== id));
+      setMessage('Sector archivado correctamente');
+    } catch (error) {
+      console.error(error);
+      setMessage('No se pudo eliminar el sector');
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       sectors,
@@ -427,9 +444,10 @@ export function useIrrigationApp() {
       handleUpdateRoutine,
       handleToggleAllSectors,
       handleToggleAllConfigurations,
-      handleUpdateSector
+      handleUpdateSector,
+      handleDeleteSector // <-- NO OLVIDES EXPORTARLA AQUÍ
     }),
-    [configurations, handleCreateSector, handleSaveConfigurationsBatch, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors, handleToggleAllConfigurations, handleUpdateSector]
+    [configurations, handleCreateSector, handleSaveConfigurationsBatch, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors, handleToggleAllConfigurations, handleUpdateSector, handleDeleteSector]
   );
 
   return value;
