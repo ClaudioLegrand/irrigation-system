@@ -12,7 +12,6 @@ export function useIrrigationApp() {
   const [message, setMessage] = useState('');
   
   // === 1. ESCUDO ANTI-REBOTE ===
-  // Pausará las peticiones automáticas mientras damos órdenes manuales
   const pauseSyncRef = useRef(false);
 
   const [newSector, setNewSector] = useState({
@@ -26,8 +25,22 @@ export function useIrrigationApp() {
     enabled: true,
   });
 
+  // === NUEVO: EL VIGILANTE SILENCIOSO ===
+  // Observa los sectores. Si ninguno está regando, resetea el Botón Gigante.
+  useEffect(() => {
+    if (!sectors || sectors.length === 0) return;
+    
+    const isAnyWatering = sectors.some(s => {
+      const st = s.currentState || s.current_state || s.estado || s.status;
+      return (st === true || st === 1 || st === '1' || ['ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE', 'ON'].includes(String(st).trim().toUpperCase()));
+    });
+
+    if (!isAnyWatering && isActive) {
+      setIsActive(false); 
+    }
+  }, [sectors, isActive]);
+
   const loadData = useCallback(async () => {
-    // Si el escudo está activo, bloqueamos la lectura para evitar parpadeos
     if (pauseSyncRef.current) return;
 
     try {
@@ -49,46 +62,38 @@ export function useIrrigationApp() {
 
   useEffect(() => {
     loadData();
-
-    const intervalId = setInterval(() => {
-      loadData(); 
-    }, 3000);
-
+    const intervalId = setInterval(() => { loadData(); }, 3000);
     return () => clearInterval(intervalId);
   }, [loadData]);
 
-  // === 2. EL CEREBRO DEL BOTÓN GIGANTE (Apagar / Prender Inteligente) ===
+  // === EL CEREBRO DEL BOTÓN GIGANTE ===
   const handleToggleMain = useCallback(async () => {
-    // A. Revisamos el estado de la realidad (¿Hay algo prendido?)
     const activeSectors = sectors.filter(s => {
       const st = s.currentState || s.current_state || s.estado || s.status;
-      return (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
+      return (st === true || st === 1 || st === '1' || ['ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE', 'ON'].includes(String(st).trim().toUpperCase()));
     });
 
     const isTurningOff = activeSectors.length > 0;
     let targetSectors = [];
     let newStateString = '';
 
-    // B. Definimos el Plan de Acción
     if (isTurningOff) {
-      targetSectors = activeSectors; // Solo apagamos los que están gastando agua
+      targetSectors = activeSectors; 
       newStateString = 'INACTIVE';
       setMessage('Deteniendo riego...');
     } else {
-      targetSectors = sectors.filter(s => s.enabled !== false); // Prendemos los habilitados
+      targetSectors = sectors.filter(s => s.enabled !== false);
       if (targetSectors.length === 0) {
         setMessage('No hay sectores habilitados para encender');
         return;
       }
-      newStateString = 'ACTIVE';
+      newStateString = 'ACTIVE'; 
       setMessage('Iniciando riego manual...');
     }
 
-    // C. Activamos el Escudo Anti-Rebote
     pauseSyncRef.current = true;
-    setIsActive(!isTurningOff); // Damos feedback visual rápido en el estado general
+    setIsActive(!isTurningOff); 
 
-    // D. Magia Visual Inmediata (Optimistic UI)
     setSectors(prevSectors => prevSectors.map(sector => {
       if (targetSectors.find(target => target.id === sector.id)) {
         return { ...sector, currentState: newStateString };
@@ -96,70 +101,134 @@ export function useIrrigationApp() {
       return sector;
     }));
 
-    // E. Enviamos las órdenes físicas (usando tu nuevo Endpoint PATCH)
     try {
       const promises = targetSectors.map(sector => {
         return fetch(`http://localhost:8080/api/sectors/${sector.id}/state`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ state: newStateString })
+        }).then(async (res) => {
+          if (!res.ok) {
+            console.error(`Error del Backend en Botón Gigante (Sector ${sector.id}):`, await res.text());
+            throw new Error(`Fallo en sector ${sector.id}`);
+          }
+          return res;
         });
       });
 
-      // Esperamos que TODAS las peticiones se completen
       await Promise.all(promises);
       setMessage(isTurningOff ? 'Riego detenido manualmente' : 'Riego iniciado manualmente');
 
     } catch (error) {
-      console.error("Error en Master Switch:", error);
-      setMessage('Error al contactar con las válvulas');
+      console.error("Error al ejecutar acción maestro:", error);
+      setMessage('Error al contactar con el servidor');
     } finally {
-      // F. Bajamos el escudo 4 segundos después (Tiempo suficiente para hardware y base de datos)
       setTimeout(() => {
         pauseSyncRef.current = false;
-        loadData(); // Leemos la realidad final
+        loadData(); 
       }, 4000);
     }
   }, [sectors, loadData]);
 
+  // === COMBO DE 2 GOLPES (PARO DE EMERGENCIA SECUENCIAL) ===
   const handleToggleSector = async (sector) => {
     const updatedStatus = !(sector.enabled !== false);
     
+    const st = sector.currentState || sector.current_state || sector.estado || sector.status;
+    const isCurrentlyWatering = (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
+    
+    const needsEmergencyStop = !updatedStatus && isCurrentlyWatering;
+
     const payload = {
-      name: sector.name,
-      description: sector.description,
-      enabled: updatedStatus, 
-      currentState: sector.currentState 
+      name: sector.name || `Sector ${sector.id}`,
+      description: sector.description || "",
+      defaultConfiguration: false,
+      currentState: needsEmergencyStop ? 'INACTIVE' : (sector.currentState || "INACTIVE"),
+      enabled: updatedStatus
     };
 
+    pauseSyncRef.current = true;
+
+    // Actualización optimista de UI
+    setSectors(prevSectors => prevSectors.map(s => {
+      if (s.id === sector.id) {
+        return { ...s, enabled: updatedStatus, currentState: payload.currentState };
+      }
+      return s;
+    }));
+
+    if (needsEmergencyStop) setMessage('Sector pausado: Cortando el agua por seguridad...');
+
     try {
-      const response = await fetch(`http://localhost:8080/api/sectors/${sector.id}`, {
+      // FIX: SECUENCIAL EN LUGAR DE PROMISE.ALL PARA EVITAR CHOQUES EN LA BASE DE DATOS
+      // Golpe 1: Apagar físicamente la válvula primero (PATCH)
+      if (needsEmergencyStop) {
+        const patchRes = await fetch(`http://localhost:8080/api/sectors/${sector.id}/state`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: 'INACTIVE' })
+        });
+        if (!patchRes.ok) console.error("Fallo el PATCH de Emergencia:", await patchRes.text());
+      }
+
+      // Golpe 2: Guardar la configuración de deshabilitado después (PUT)
+      const putRes = await fetch(`http://localhost:8080/api/sectors/${sector.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (!putRes.ok) console.error("Fallo el PUT de Configuración:", await putRes.text());
 
-      if (response.ok) {
-        setSectors(prevSectors => prevSectors.map(s => 
-          s.id === sector.id ? { ...s, enabled: updatedStatus } : s
-        ));
-      }
     } catch (error) {
-      console.error("Error al habilitar/deshabilitar el sector:", error);
+      console.error("Error crítico al modificar sector:", error);
+    } finally {
+      setTimeout(() => {
+        pauseSyncRef.current = false;
+        loadData();
+      }, 4000);
     }
   };
 
   const handleToggleAllSectors = async (enableAll) => {
-    const payload = sectors.map(sector => ({
-      idSector: sector.id,
-      enabled: enableAll
-    }));
+    pauseSyncRef.current = true; // Activar escudo protector
 
+    // Identificar quiénes están regando AHORA
+    const activeSectors = sectors.filter(s => {
+      const st = s.currentState || s.current_state || s.estado || s.status;
+      return (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
+    });
+
+    const needsEmergencyStop = !enableAll && activeSectors.length > 0;
+
+    if (needsEmergencyStop) setMessage('Pausando todos los sectores y cortando el agua...');
+    else setMessage(enableAll ? 'Habilitando todos los sectores...' : 'Pausando sectores...');
+
+    // Actualización optimista de la UI
     setSectors(prevSectors => prevSectors.map(s => ({
-      ...s, enabled: enableAll
+      ...s, 
+      enabled: enableAll,
+      currentState: (!enableAll && activeSectors.find(active => active.id === s.id)) ? 'INACTIVE' : s.currentState
     })));
 
     try {
+      // GOLPE 1 MASIVO: Apagar los sectores que están tirando agua
+      if (needsEmergencyStop) {
+        const patchPromises = activeSectors.map(sector => 
+          fetch(`http://localhost:8080/api/sectors/${sector.id}/state`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: 'INACTIVE' })
+          })
+        );
+        await Promise.all(patchPromises); // Esperamos a que todos se apaguen
+      }
+
+      // GOLPE 2 MASIVO: Actualizar la lista en BD (enabled: false)
+      const payload = sectors.map(sector => ({
+        idSector: sector.id,
+        enabled: enableAll
+      }));
+
       const response = await fetch('http://localhost:8080/api/sectors/list', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -167,10 +236,16 @@ export function useIrrigationApp() {
       });
 
       if (!response.ok) throw new Error('Error al actualizar los sectores');
-      setMessage(enableAll ? 'Todos los sectores habilitados' : 'Sectores pausados');
+      setMessage(enableAll ? 'Todos los sectores habilitados' : 'Sectores pausados correctamente');
+
     } catch (error) {
-      console.error(error);
+      console.error("Error al pausar todos:", error);
       loadData(); 
+    } finally {
+      setTimeout(() => {
+        pauseSyncRef.current = false;
+        loadData();
+      }, 4000);
     }
   };
 
@@ -229,7 +304,7 @@ export function useIrrigationApp() {
         name,
         description: newSector.description.trim(),
         currentState: 'INACTIVE',
-        defaultConfiguration: shouldCreateDefaultConfiguration,
+        defaultConfiguration: false, 
       });
 
       setSectors((prev) => [created, ...prev]);

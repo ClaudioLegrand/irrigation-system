@@ -106,6 +106,10 @@ public class SectorServiceImpl implements SectorService {
         Sector sector = sectorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sector not found with id " + id));
 
+        if (request.getState().toString().equals("ACTIVE") && (sector.getEnabled() == null || !sector.getEnabled())) {
+            throw new RuntimeException("Security: A disabled sector cannot be turned on.");
+        }
+
         if (sector.getCurrentState() == request.getState()) {
             return toResponse(sector);
         }

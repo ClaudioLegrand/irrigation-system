@@ -80,6 +80,10 @@ public class IrrigationHistoryServiceImpl implements IrrigationHistoryService {
         Sector sector = sectorRepository.findById(request.getSectorId())
                 .orElseThrow(() -> new RuntimeException("Sector no found with id " + request.getSectorId()));
 
+        if (request.getStatus().toString().equals("ON") && (sector.getEnabled() == null || !sector.getEnabled())) {
+            throw new RuntimeException("Security: A disabled sector cannot be turned on.");
+        }
+
         if ("ON".equalsIgnoreCase(request.getStatus())) {
 
             if (sector.getCurrentState() == SectorState.ACTIVE) {
