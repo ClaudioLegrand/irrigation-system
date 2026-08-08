@@ -1,7 +1,9 @@
 package com.legrandc.irrigation_system.models;
 
 import jakarta.persistence.*;
-import java.time.LocalTime;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 
@@ -26,11 +28,17 @@ public class IrrigationConfiguration {
     private Sector sector;
 
     @Column(nullable = false)
-    @JsonFormat(pattern = "HH:mm")
-    private LocalTime startTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm")
+    private LocalDateTime startTime;
 
     @Column(nullable = false)
     private Integer durationMinutes;
+
+    @Column
+    private UUID startJobId;
+
+    @Column
+    private UUID stopJobId;
 
     @Column(nullable = false)
     private Boolean enabled;

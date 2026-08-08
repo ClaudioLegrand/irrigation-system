@@ -219,10 +219,45 @@ export default function HistoryView(props) {
     return 'Manual (Aplicación)';
   };
 
-  // === OPTIMIZACIÓN DE MEMORIA (CACHÉ) ===
+  // === OPTIMIZACIÓN DE MEMORIA Y LOGS VIRTUALES (CACHÉ) ===
   const validHistory = useMemo(() => {
-    return (rawHistory || []).filter(item => item !== null && typeof item === 'object');
-  }, [rawHistory]);
+    const historyList = (rawHistory || []).filter(item => item !== null && typeof item === 'object');
+    
+    // 1. Identificamos sectores actualmente encendidos en la app
+    const activeSectors = (appData.sectors || []).filter(s => {
+      const st = s.current_state || s.currentState || s.status || s.state || s.estado || s.activo || s.running;
+      return (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
+    });
+
+    // 2. Creamos logs virtuales para tapar el lag del servidor
+    const virtualLogs = [];
+    activeSectors.forEach(sector => {
+      const secIdStr = String(sector.id);
+      const sectorHistory = historyList.filter(h => String(h.sector_id || h.sectorId || h.id_sector) === secIdStr);
+      
+      // Buscamos el registro más reciente de este sector en la Base de Datos
+      sectorHistory.sort((a, b) => getSortTime(b) - getSortTime(a));
+      const latestRecord = sectorHistory.length > 0 ? sectorHistory[0] : null;
+      
+      // Si NO hay registro o el último ya está cerrado (Finalizado), inyectamos uno fantasma
+      const isRealRecordFinished = !latestRecord || (latestRecord.end_date_time || latestRecord.endDateTime || latestRecord.endTime || latestRecord.end_time);
+      
+      if (isRealRecordFinished) {
+        const now = new Date();
+        virtualLogs.push({
+          id: `virtual-${sector.id}-${now.getTime()}`,
+          sectorId: sector.id,
+          sectorName: sector.name,
+          startDateTime: now.getTime(), // CRÍTICO: Usamos milisegundos puros para forzar la hora local (Argentina)
+          triggerSource: 'Manual - Sincronizando...',
+          isVirtual: true // Marca secreta para que el sistema sepa que es temporal
+        });
+      }
+    });
+
+    // 3. Fusionamos los datos virtuales en tiempo real con la historia real
+    return [...virtualLogs, ...historyList];
+  }, [rawHistory, appData.sectors]);
   
   // Extraemos todos los meses únicos del historial ("YYYY-MM")
   const availableMonths = useMemo(() => {
@@ -251,21 +286,23 @@ export default function HistoryView(props) {
     return [...validHistory].sort((a, b) => getSortTime(b) - getSortTime(a));
   }, [validHistory]);
 
-  const checkIsActive = (item, index) => {
+  // 2. NUEVA LÓGICA DE ESTADO (Ya no recicla registros viejos)
+  const checkIsActive = (item) => {
+    if (item.isVirtual) return true; // Nuestros registros fantasma siempre están activos
+
     if (item.active === true || item.activo === true || item.isRunning === true || item.is_running === true || item.prendido === true) return true;
     if (item.active === false || item.activo === false || item.isRunning === false || item.is_running === false) return false;
 
-    const sector = getSectorObj(item);
-    if (sector) {
-      const st = sector.current_state || sector.currentState || sector.status || sector.state || sector.estado || sector.activo || sector.running;
-      if (st !== undefined && st !== null) {
-        const isSectorRunning = (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
-        if (isSectorRunning) {
-          const secIdStr = String(item.sector_id || item.sectorId || item.id_sector);
-          const firstIdxForSector = sortedHistory.findIndex(row => String(row.sector_id || row.sectorId || row.id_sector) === secIdStr);
-          if (index === firstIdxForSector) return true;
-        }
+    // Verificamos si es un registro real que aún no tiene fecha de fin
+    const isFinished = !!(item.end_date_time || item.endDateTime || item.endTime || item.end_time);
+    if (!isFinished) {
+      // Confirmamos con el sector actual por seguridad
+      const sector = getSectorObj(item);
+      if (sector) {
+        const st = sector.current_state || sector.currentState || sector.status || sector.state || sector.estado || sector.activo || sector.running;
+        return (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
       }
+      return true; // Fallback si está abierto y no encontramos el sector
     }
     return false;
   };
@@ -734,7 +771,7 @@ export default function HistoryView(props) {
             {displayedHistory.map((item, index) => {
               const itemId = item.id || item._id || item.logId || index;
               const isExpanded = expandedId === itemId;
-              const isActive = checkIsActive(item, index);
+              const isActive = checkIsActive(item); // <-- Actualizado aquí
               
               const sectorTitle = getSectorName(item);
               const startData = formatDateTime(item.start_date_time || item.startDateTime || item.startTime || item.start_time || item.timestamp || item.created_at);

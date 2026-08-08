@@ -20,13 +20,13 @@ export function useIrrigationApp() {
     defaultConfiguration: true,
   });
   const [newConfiguration, setNewConfiguration] = useState({
-    startTime: '06:00',
+    startDate: '', 
+    startTime: '',
     durationMinutes: 15,
     enabled: true,
   });
 
   // === NUEVO: EL VIGILANTE SILENCIOSO ===
-  // Observa los sectores. Si ninguno está regando, resetea el Botón Gigante.
   useEffect(() => {
     if (!sectors || sectors.length === 0) return;
     
@@ -149,7 +149,6 @@ export function useIrrigationApp() {
 
     pauseSyncRef.current = true;
 
-    // Actualización optimista de UI
     setSectors(prevSectors => prevSectors.map(s => {
       if (s.id === sector.id) {
         return { ...s, enabled: updatedStatus, currentState: payload.currentState };
@@ -160,8 +159,6 @@ export function useIrrigationApp() {
     if (needsEmergencyStop) setMessage('Sector pausado: Cortando el agua por seguridad...');
 
     try {
-      // FIX: SECUENCIAL EN LUGAR DE PROMISE.ALL PARA EVITAR CHOQUES EN LA BASE DE DATOS
-      // Golpe 1: Apagar físicamente la válvula primero (PATCH)
       if (needsEmergencyStop) {
         const patchRes = await fetch(`http://localhost:8080/api/sectors/${sector.id}/state`, {
           method: 'PATCH',
@@ -171,7 +168,6 @@ export function useIrrigationApp() {
         if (!patchRes.ok) console.error("Fallo el PATCH de Emergencia:", await patchRes.text());
       }
 
-      // Golpe 2: Guardar la configuración de deshabilitado después (PUT)
       const putRes = await fetch(`http://localhost:8080/api/sectors/${sector.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -190,9 +186,8 @@ export function useIrrigationApp() {
   };
 
   const handleToggleAllSectors = async (enableAll) => {
-    pauseSyncRef.current = true; // Activar escudo protector
+    pauseSyncRef.current = true; 
 
-    // Identificar quiénes están regando AHORA
     const activeSectors = sectors.filter(s => {
       const st = s.currentState || s.current_state || s.estado || s.status;
       return (st === true || st === 1 || st === '1' || ['ON', 'ACTIVE', 'ACTIVO', 'RUNNING', 'PRENDIDO', 'TRUE'].includes(String(st).trim().toUpperCase()));
@@ -203,7 +198,6 @@ export function useIrrigationApp() {
     if (needsEmergencyStop) setMessage('Pausando todos los sectores y cortando el agua...');
     else setMessage(enableAll ? 'Habilitando todos los sectores...' : 'Pausando sectores...');
 
-    // Actualización optimista de la UI
     setSectors(prevSectors => prevSectors.map(s => ({
       ...s, 
       enabled: enableAll,
@@ -211,7 +205,6 @@ export function useIrrigationApp() {
     })));
 
     try {
-      // GOLPE 1 MASIVO: Apagar los sectores que están tirando agua
       if (needsEmergencyStop) {
         const patchPromises = activeSectors.map(sector => 
           fetch(`http://localhost:8080/api/sectors/${sector.id}/state`, {
@@ -220,10 +213,9 @@ export function useIrrigationApp() {
             body: JSON.stringify({ state: 'INACTIVE' })
           })
         );
-        await Promise.all(patchPromises); // Esperamos a que todos se apaguen
+        await Promise.all(patchPromises); 
       }
 
-      // GOLPE 2 MASIVO: Actualizar la lista en BD (enabled: false)
       const payload = sectors.map(sector => ({
         idSector: sector.id,
         enabled: enableAll
@@ -247,6 +239,23 @@ export function useIrrigationApp() {
         loadData();
       }, 4000);
     }
+  };
+
+  // === TRADUCTOR DE FECHAS PARA JAVA ===
+  const formatSafeDateTime = (timeObj) => {
+    if (!timeObj) return '';
+    // Si es un String de Java ("2026-08-06T14:30:00")
+    if (typeof timeObj === 'string') return timeObj.replace('T', ' ').substring(0, 16);
+    // Si Java lo manda como un Array [2026, 8, 6, 14, 30]
+    if (Array.isArray(timeObj)) {
+      const [y, mo, d, h, m] = timeObj;
+      return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+    // Si Java lo manda como Objeto {year: 2026, monthValue: 8}
+    if (typeof timeObj === 'object') {
+      return `${timeObj.year}-${String(timeObj.monthValue).padStart(2, '0')}-${String(timeObj.dayOfMonth).padStart(2, '0')} ${String(timeObj.hour).padStart(2, '0')}:${String(timeObj.minute).padStart(2, '0')}`;
+    }
+    return String(timeObj);
   };
 
   const handleToggleAllConfigurations = async (sectorId, enableAll) => {
@@ -287,46 +296,6 @@ export function useIrrigationApp() {
     }
   };
 
-  const handleCreateSector = useCallback(async (event, options = {}) => {
-    event.preventDefault();
-    const name = newSector.name.trim();
-    if (!name) {
-      setMessage('Ingresa un nombre para crear el sector');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-
-    const shouldCreateDefaultConfiguration = options.defaultConfiguration ?? Boolean(newSector.defaultConfiguration);
-    const shouldCreateManualConfiguration = Boolean(options.createConfiguration);
-
-    try {
-      const created = await createSector({
-        name,
-        description: newSector.description.trim(),
-        currentState: 'INACTIVE',
-        defaultConfiguration: false, 
-      });
-
-      setSectors((prev) => [created, ...prev]);
-      setNewSector({ name: '', description: '', defaultConfiguration: true });
-
-      if (shouldCreateManualConfiguration) {
-        const createdConfiguration = await createConfiguration({
-          sectorId: created.id,
-          startTime: newConfiguration.startTime,
-          durationMinutes: Number(newConfiguration.durationMinutes),
-          enabled: Boolean(newConfiguration.enabled),
-        });
-        setConfigurations((prev) => [createdConfiguration, ...prev]);
-      }
-
-      setMessage('Sector creado correctamente');
-      await loadData();
-    } catch (error) {
-      setMessage(error.message || 'No se pudo crear el sector');
-    }
-  }, [loadData, newConfiguration, newSector]);
-
   const handleSaveConfigurationsBatch = useCallback(async (routinesArray) => {
     try {
       const response = await fetch('http://localhost:8080/api/configurations/list', {
@@ -347,26 +316,85 @@ export function useIrrigationApp() {
     }
   }, [loadData]);
 
+  const handleCreateSector = useCallback(async (event, options = {}) => {
+    event.preventDefault();
+    const name = newSector.name.trim();
+    if (!name) {
+      setMessage('Ingresa un nombre para crear el sector');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const shouldCreateDefaultConfiguration = options.defaultConfiguration ?? Boolean(newSector.defaultConfiguration);
+
+    try {
+      const created = await createSector({
+        name,
+        description: newSector.description.trim(),
+        currentState: 'INACTIVE',
+        defaultConfiguration: false, 
+      });
+
+      setSectors((prev) => [created, ...prev]);
+      setNewSector({ name: '', description: '', defaultConfiguration: true });
+
+      if (shouldCreateDefaultConfiguration) {
+        let safeStartTime = newConfiguration.startTime;
+        let safeStartDate = newConfiguration.startDate || new Date().toISOString().split('T')[0];
+        
+        const payload = [{
+          sectorId: created.id,
+          startTime: `${safeStartDate} ${safeStartTime}`,
+          durationMinutes: Number(newConfiguration.durationMinutes),
+          enabled: Boolean(newConfiguration.enabled)
+        }];
+        await handleSaveConfigurationsBatch(payload);
+      }
+
+      setMessage('Sector creado correctamente');
+      await loadData();
+    } catch (error) {
+      setMessage(error.message || 'No se pudo crear el sector');
+    }
+  }, [loadData, newConfiguration, newSector, handleSaveConfigurationsBatch]);
+
   const handleToggleConfiguration = useCallback(async (config) => {
     try {
-      const updated = await updateConfiguration(config.id, {
+      // BARRERA DE FRONTEND: Evita activar rutinas pasadas
+      const configTime = new Date(formatSafeDateTime(config.startTime).replace(' ', 'T')).getTime();
+      if (!config.enabled && configTime <= new Date().getTime()) {
+        setMessage('No puedes activar una rutina que ya expiró');
+        return; // Cortamos la ejecución antes de llamar a Java
+      }
+
+      const payload = {
         ...config,
+        startTime: formatSafeDateTime(config.startTime),
         enabled: !config.enabled
-      });
+      };
+      
+      const updated = await updateConfiguration(config.id, payload);
       setConfigurations((prev) => prev.map((item) => (item.id === config.id ? updated : item)));
     } catch (error) {
+      console.error("Error en toggle de rutina:", error);
       setMessage(error.message || 'No se pudo actualizar la rutina');
     }
   }, []);
 
   const handleUpdateRoutine = useCallback(async (id, payload) => {
     try {
-      const updated = await updateConfiguration(id, payload);
+      // Blindaje adicional por si editamos una rutina
+      const finalPayload = {
+        ...payload,
+        startTime: formatSafeDateTime(payload.startTime)
+      };
+      const updated = await updateConfiguration(id, finalPayload);
       setConfigurations((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      await loadData();
     } catch (error) {
       console.error('Error al actualizar la rutina:', error);
     }
-  }, []);
+  }, [loadData]);
 
   const handleDeleteConfiguration = useCallback(async (id) => {
     try {
@@ -405,7 +433,6 @@ export function useIrrigationApp() {
     }
   }, [sectors]);
 
-  // NUEVO: Función para eliminar (borrado lógico en tu backend)
   const handleDeleteSector = useCallback(async (id) => {
     try {
       const response = await fetch(`http://localhost:8080/api/sectors/${id}`, {
@@ -413,7 +440,6 @@ export function useIrrigationApp() {
       });
       if (!response.ok) throw new Error('Error al eliminar el sector');
       
-      // Lo sacamos de la vista inmediatamente
       setSectors((prev) => prev.filter((item) => item.id !== id));
       setMessage('Sector archivado correctamente');
     } catch (error) {
@@ -445,7 +471,7 @@ export function useIrrigationApp() {
       handleToggleAllSectors,
       handleToggleAllConfigurations,
       handleUpdateSector,
-      handleDeleteSector // <-- NO OLVIDES EXPORTARLA AQUÍ
+      handleDeleteSector
     }),
     [configurations, handleCreateSector, handleSaveConfigurationsBatch, handleToggleMain, handleToggleSector, history, isActive, loading, loadData, message, newConfiguration, newSector, sectors, handleToggleAllConfigurations, handleUpdateSector, handleDeleteSector]
   );

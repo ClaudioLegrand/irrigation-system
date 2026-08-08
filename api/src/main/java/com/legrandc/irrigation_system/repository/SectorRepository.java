@@ -11,4 +11,6 @@ public interface SectorRepository extends JpaRepository<Sector, Long> {
     List<Sector> findByNameContainingIgnoreCase(String name);
 
     List<Sector> findByArchivedFalse();
+
+    List<Sector> findByIdIn(List<Long> ids);
 }

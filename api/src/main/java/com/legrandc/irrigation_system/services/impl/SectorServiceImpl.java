@@ -65,12 +65,24 @@ public class SectorServiceImpl implements SectorService {
     @Override
     public SectorResponse updateSector(Long id, SectorRequest request) {
         Sector sector = findSectorOrThrow(id);
+
+        boolean wasEnabled = sector.getEnabled() != null ? sector.getEnabled() : false;
+
         sector.setName(request.getName());
         sector.setDescription(request.getDescription());
         sector.setCurrentState(parseState(request.getCurrentState()));
         sector.setEnabled(request.getEnabled());
         
-        return toResponse(sectorRepository.save(sector));
+        Sector updatedSector = sectorRepository.save(sector);
+
+        if (!request.getEnabled()) {
+            irrigationConfigurationService.disableAllHardwareJobsForSector(id);
+        } else if (!wasEnabled && request.getEnabled()) {
+            
+            irrigationConfigurationService.enableAllHardwareJobsForSector(id);
+        }
+
+        return toResponse(updatedSector);
     }
 
     @Override
@@ -81,6 +93,8 @@ public class SectorServiceImpl implements SectorService {
         sector.setEnabled(false);
 
         sectorRepository.save(sector);
+
+        irrigationConfigurationService.disableAllHardwareJobsForSector(id);
     }
 
     @Override
@@ -151,9 +165,17 @@ public class SectorServiceImpl implements SectorService {
             
             Sector sector = sectorRepository.findById(request.getIdSector()).orElseThrow(() -> new ResourceNotFoundException("Sector not found with id " + request.getIdSector()));
 
+            boolean wasEnabled = sector.getEnabled() != null ? sector.getEnabled() : false;
             sector.setEnabled(request.getEnabled());
 
             sectorToSave.add(sector);
+
+            if (!request.getEnabled()) {
+                irrigationConfigurationService.disableAllHardwareJobsForSector(request.getIdSector());
+            } else if (!wasEnabled && request.getEnabled()) {
+                
+                irrigationConfigurationService.enableAllHardwareJobsForSector(request.getIdSector());
+            }
         }
 
         sectorRepository.saveAll(sectorToSave);

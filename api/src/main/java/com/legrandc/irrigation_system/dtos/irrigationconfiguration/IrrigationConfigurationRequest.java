@@ -5,7 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalTime;
+import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -19,8 +21,9 @@ public class IrrigationConfigurationRequest {
     private Long sectorId;
 
     @NotNull
-    @Schema(type = "string", example = "06:30", description = "Start time in format HH:mm")
-    private LocalTime startTime;
+    @Schema(type = "string", example = "2026-10-01 13:00", description = "Start time in format yyyy-MM-dd HH:mm")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm") 
+    private LocalDateTime startTime;
 
     @NotNull
     @Schema(type = "integer", example = "30", description = "Duration in minutes")

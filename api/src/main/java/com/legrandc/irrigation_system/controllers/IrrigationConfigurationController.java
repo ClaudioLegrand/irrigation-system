@@ -78,14 +78,6 @@ public class IrrigationConfigurationController {
         return ResponseEntity.ok(new ApiResponse("Configuration successfully deleted"));
     }
 
-    @Operation(summary = "Create a configuration", description = "Creates a new irrigation configuration from the provided request body.")
-    @PostMapping
-    public ResponseEntity<IrrigationConfigurationResponse> createConfiguration(@Valid @RequestBody IrrigationConfigurationRequest request) {
-
-        IrrigationConfigurationResponse response = configurationService.createConfiguration(request);
-
-        return ResponseEntity.ok(response);
-    }
 
     @Operation(summary = "Create multiple configurations", description = "Creates multiple new irrigation configurations from the provided list of request bodies.")
     @PostMapping("/list")

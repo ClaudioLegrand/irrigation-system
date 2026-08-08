@@ -11,7 +11,13 @@ export async function createConfiguration(payload) {
   });
 }
 
-// NUEVO: Para apagar/prender la palanca
+export async function createConfigurationsInBatch(payloadList) {
+  return request('/configurations/list', {
+    method: 'POST',
+    body: JSON.stringify(payloadList),
+  });
+}
+
 export async function updateConfiguration(id, payload) {
   return request(`/configurations/${id}`, {
     method: 'PUT',
@@ -19,7 +25,6 @@ export async function updateConfiguration(id, payload) {
   });
 }
 
-// NUEVO: Para borrar la rutina
 export async function deleteConfiguration(id) {
   return request(`/configurations/${id}`, {
     method: 'DELETE',

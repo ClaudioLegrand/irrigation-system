@@ -48,6 +48,13 @@ export async function createConfiguration(payload) {
   return response.json();
 }
 
+export async function createConfigurationsInBatch(payloadList) {
+  return request('/configurations/list', {
+    method: 'POST',
+    body: JSON.stringify(payloadList),
+  });
+}
+
 export async function updateSector(id, payload) {
   const normalizedPayload = {
     ...payload,

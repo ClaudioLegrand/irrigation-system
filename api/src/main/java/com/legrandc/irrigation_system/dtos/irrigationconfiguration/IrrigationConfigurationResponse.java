@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -12,7 +12,7 @@ import java.time.LocalTime;
 public class IrrigationConfigurationResponse {
     private Long id;
     private Long sectorId;
-    private LocalTime startTime;
+    private LocalDateTime startTime;
     private Integer durationMinutes;
     private Boolean enabled;
 }

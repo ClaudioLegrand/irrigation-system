@@ -74,6 +74,11 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.jobrunr</groupId>
+			<artifactId>jobrunr-spring-boot-4-starter</artifactId>
+			<version>8.7.1</version> 
+		</dependency>
 	</dependencies>
 
 	<build>

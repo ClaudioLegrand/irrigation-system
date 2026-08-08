@@ -11,7 +11,6 @@ import java.util.List;
 
 public interface IrrigationConfigurationService {
 
-    IrrigationConfigurationResponse createConfiguration(IrrigationConfigurationRequest request);
 
     @Transactional
     void createConfigurationsInBatch(List<IrrigationConfigurationRequest> listRequest);
@@ -28,6 +27,10 @@ public interface IrrigationConfigurationService {
     IrrigationConfigurationResponse updateConfiguration(Long id, IrrigationConfigurationRequest request);
 
     void deleteConfiguration(Long id);
+
+    void enableAllHardwareJobsForSector(Long sectorId);
+
+    void disableAllHardwareJobsForSector(Long sectorId);
     
     List<IrrigationConfigurationResponse> getActiveConfigurationsForHardware(Long sectorId);
 

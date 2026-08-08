@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+const getTodayDateString = () => {
+  const d = new Date();
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+};
+
+const getCurrentTimeRounded = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 5); // Sugiere 5 minutos en el futuro
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
+const combineDateTime = (dateStr, timeStr) => {
+  const safeTime = timeStr ? timeStr.substring(0, 5) : "00:00";
+  return `${dateStr} ${safeTime}`;
+};
+
 export default function ConfigView({ appData }) {
   const { 
     sectors, configurations, handleToggleSector, handleSaveConfigurationsBatch, 
@@ -9,7 +26,7 @@ export default function ConfigView({ appData }) {
     handleUpdateRoutine, handleUpdateSector,
     lastSectorId, setLastSectorId, handleToggleAllSectors,
     handleToggleAllConfigurations,
-    handleDeleteSector // <-- Añadimos esto aquí
+    handleDeleteSector
   } = appData;
 
   const [localTab, setLocalTab] = useState(sectors[0]?.id || 'NEW');
@@ -25,24 +42,53 @@ export default function ConfigView({ appData }) {
   
   const MAX_ROUTINES = 6;
   const [routineList, setRoutineList] = useState([
-    { id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }
+    { id: Date.now(), startDate: getTodayDateString(), startTime: getCurrentTimeRounded(), durationMinutes: 15, errorDate: '', errorTime: '', errorDuration: '' }
   ]);
   const [removingRowIds, setRemovingRowIds] = useState([]);
   const [isAtLimitShake, setIsAtLimitShake] = useState(false);
 
   const [sectorNameError, setSectorNameError] = useState('');
+  const [sectorDateError, setSectorDateError] = useState('');
+  const [sectorTimeError, setSectorTimeError] = useState('');
 
   const [editingRoutineId, setEditingRoutineId] = useState(null);
-  const [editData, setEditData] = useState({ startTime: '', durationMinutes: 15 });
+  const [editData, setEditData] = useState({ startDate: '', startTime: '', durationMinutes: 15, errorDate: '', errorTime: '' });
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingIds, setDeletingIds] = useState([]);
   
-  // NUEVO: Estado para editar el nombre del sector fluidamente
   const [isEditingSectorName, setIsEditingSectorName] = useState(false);
   const [editedSectorName, setEditedSectorName] = useState('');
-
-  // NUEVO: Estado para el borrado del sector
   const [confirmDeleteSectorId, setConfirmDeleteSectorId] = useState(null);
+
+  const [scrollShadowsRoutines, setScrollShadowsRoutines] = useState({ top: false, bottom: false });
+  const routinesScrollRef = useRef(null);
+
+  useEffect(() => {
+    // Al abrir la pestaña NEW, pre-cargamos la hora y fecha actuales
+    setNewConfiguration({
+      startDate: getTodayDateString(),
+      startTime: getCurrentTimeRounded(),
+      durationMinutes: 15,
+      enabled: true
+    });
+  }, [setNewConfiguration]);
+
+  const checkVerticalScrollRoutines = () => {
+    const el = routinesScrollRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const hasScroll = scrollHeight > clientHeight;
+    setScrollShadowsRoutines({
+      top: scrollTop > 2 && hasScroll,
+      bottom: scrollHeight - scrollTop - clientHeight > 2 && hasScroll
+    });
+  };
+
+  useEffect(() => {
+    checkVerticalScrollRoutines();
+    const timer = setTimeout(checkVerticalScrollRoutines, 150);
+    return () => clearTimeout(timer);
+  }, [configurations, selectedTab, editingRoutineId, deletingIds]);
 
   const routineRefs = useRef({});
   const isProgrammaticScroll = useRef(false);
@@ -62,25 +108,57 @@ export default function ConfigView({ appData }) {
   useEffect(() => {
     cancelEditing();
     setSectorNameError('');
+    setSectorDateError('');
+    setSectorTimeError('');
     setIsEditingSectorName(false);
-    setConfirmDeleteSectorId(null); // Resetea el botón de borrar al cambiar de pestaña
+    setConfirmDeleteSectorId(null);
   }, [selectedTab]);
 
   const selectedSectorObj = sectors.find(s => s.id === selectedTab);
   const sectorConfigs = configurations.filter(c => c.sectorId === selectedTab);
 
-  const formatTime = (timeObj) => {
-    if (!timeObj) return '--:--';
-    if (typeof timeObj === 'string') return timeObj.substring(0, 5);
-    const h = String(timeObj.hour).padStart(2, '0');
-    const m = String(timeObj.minute).padStart(2, '0');
-    return `${h}:${m}`;
+  const formatDateTimeText = (dateTimeStr) => {
+    if (!dateTimeStr) return { dateText: '', timeText: '--:--' };
+    
+    let dStr = dateTimeStr;
+    if (typeof dateTimeStr !== 'string') {
+        const y = dateTimeStr.year;
+        const mo = String(dateTimeStr.monthValue).padStart(2, '0');
+        const da = String(dateTimeStr.dayOfMonth).padStart(2, '0');
+        const h = String(dateTimeStr.hour).padStart(2, '0');
+        const m = String(dateTimeStr.minute).padStart(2, '0');
+        dStr = `${y}-${mo}-${da}T${h}:${m}`;
+    }
+
+    const cleanStr = dStr.trim().replace(' ', 'T');
+    const parts = cleanStr.split('T');
+    if (parts.length < 2) return { dateText: '', timeText: cleanStr.substring(0, 5) };
+
+    const datePart = parts[0];
+    const timeText = parts[1].substring(0, 5);
+
+    const now = new Date();
+    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = new Date(tomorrow.getTime() - (tomorrow.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    let dateText = datePart;
+    if (datePart === todayStr) dateText = 'Hoy';
+    else if (datePart === tomorrowStr) dateText = 'Mañana';
+    else {
+      const dp = datePart.split('-');
+      if (dp.length === 3) dateText = `${dp[2]}/${dp[1]}/${dp[0]}`;
+    }
+
+    return { dateText, timeText, rawDate: datePart };
   };
 
   const sortedConfigs = [...sectorConfigs].sort((a, b) => {
-    const timeA = formatTime(a.startTime);
-    const timeB = formatTime(b.startTime);
-    return timeA.localeCompare(timeB);
+    let tA = typeof a.startTime === 'string' ? a.startTime : '';
+    let tB = typeof b.startTime === 'string' ? b.startTime : '';
+    return tA.localeCompare(tB);
   });
 
   const checkHorizontalScrollTabs = () => {
@@ -144,7 +222,7 @@ export default function ConfigView({ appData }) {
     }
     setRoutineList(prev => [
       ...prev, 
-      { id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }
+      { id: Date.now(), startDate: getTodayDateString(), startTime: getCurrentTimeRounded(), durationMinutes: 15, errorDate: '', errorTime: '', errorDuration: '' }
     ]);
   };
 
@@ -161,6 +239,7 @@ export default function ConfigView({ appData }) {
     setRoutineList(prev => prev.map(r => {
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
+      if (field === 'startDate') updated.errorDate = '';
       if (field === 'startTime') updated.errorTime = '';
       if (field === 'durationMinutes') updated.errorDuration = '';
       return updated;
@@ -174,33 +253,56 @@ export default function ConfigView({ appData }) {
 
     let hasErrors = false;
     const seenTimes = new Set();
+    const todayStr = getTodayDateString();
 
     const validatedList = routineList.map(r => {
+      let errDate = '';
       let errTime = '';
       let errDur = '';
 
-      if (!r.startTime) {
-        errTime = 'Elige una hora';
-        hasErrors = true;
-      } else {
-        const isDuplicateExisting = sectorConfigs.some(c => formatTime(c.startTime) === r.startTime);
-        const isDuplicateBatch = seenTimes.has(r.startTime);
+      if (!r.startDate) errDate = 'Elige una fecha';
+      if (!r.startTime) errTime = 'Elige una hora';
 
-        if (isDuplicateExisting || isDuplicateBatch) {
-          errTime = 'Horario repetido';
+      if (r.startDate && r.startTime) {
+        const fullTimeStr = combineDateTime(r.startDate, r.startTime);
+        const fullTimeIso = fullTimeStr.replace(' ', 'T');
+        const routineTimestamp = new Date(fullTimeIso).getTime();
+        const now = new Date().getTime();
+
+        if (routineTimestamp <= now) {
+          if (r.startDate < todayStr) {
+            errDate = 'La fecha ya pasó';
+          } else {
+            errTime = 'La hora ya pasó';
+          }
           hasErrors = true;
         } else {
-          seenTimes.add(r.startTime);
+          // Detector de Clones
+          const isDuplicateExisting = sectorConfigs.some(c => {
+            const existingTimeIso = typeof c.startTime === 'string' ? c.startTime.replace(' ', 'T') : '';
+            return new Date(existingTimeIso).getTime() === routineTimestamp;
+          });
+
+          const isDuplicateBatch = seenTimes.has(fullTimeStr);
+
+          if (isDuplicateExisting || isDuplicateBatch) {
+            errTime = 'Horario repetido';
+            hasErrors = true;
+          } else {
+            seenTimes.add(fullTimeStr);
+          }
         }
+      } else {
+        hasErrors = true;
       }
 
       const dur = Number(r.durationMinutes);
       if (!r.durationMinutes || dur < 5 || dur > 180) {
-        errDur = 'Mín. 5 - Máx. 180 min';
+        errDur = 'Mín. 5 - Máx. 180';
         hasErrors = true;
       }
 
-      return { ...r, errorTime: errTime, errorDuration: errDur };
+      return { ...r, errorDate: errDate, errorTime: errTime, errorDuration: errDur };
     });
 
     if (hasErrors) {
@@ -210,7 +312,7 @@ export default function ConfigView({ appData }) {
 
     const payload = validatedList.map(r => ({
       sectorId: selectedTab,
-      startTime: r.startTime,
+      startTime: combineDateTime(r.startDate, r.startTime),
       durationMinutes: Number(r.durationMinutes),
       enabled: true
     }));
@@ -218,7 +320,9 @@ export default function ConfigView({ appData }) {
     setIsSaving(true);
     try {
       await handleSaveConfigurationsBatch(payload);
-      setRoutineList([{ id: Date.now(), startTime: '', durationMinutes: 15, errorTime: '', errorDuration: '' }]);
+      setRoutineList([{ id: Date.now(), startDate: getTodayDateString(), startTime: getCurrentTimeRounded(), durationMinutes: 15, errorDate: '', errorTime: '', errorDuration: '' }]);
+    } catch (error) {
+      setLocalError('Error al conectar con el servidor.');
     } finally {
       setIsSaving(false);
     }
@@ -226,11 +330,49 @@ export default function ConfigView({ appData }) {
 
   const handleCreateSectorSubmit = async (e) => {
     e.preventDefault();
+    let hasError = false;
+
     if (!newSector.name || !newSector.name.trim()) {
       setSectorNameError('Ingresa un nombre para el sector');
-      return;
+      hasError = true;
+    } else {
+      setSectorNameError('');
     }
-    setSectorNameError('');
+
+    if (newSector.defaultConfiguration) {
+      const startDate = newConfiguration.startDate || getTodayDateString();
+      const startTime = newConfiguration.startTime;
+      const todayStr = getTodayDateString();
+      
+      setSectorDateError('');
+      setSectorTimeError('');
+
+      if (!startDate) {
+        setSectorDateError('Elige una fecha');
+        hasError = true;
+      }
+      if (!startTime) {
+        setSectorTimeError('Elige una hora');
+        hasError = true;
+      }
+
+      if (startDate && startTime) {
+        const fullTimeStr = combineDateTime(startDate, startTime);
+        const routineTimestamp = new Date(fullTimeStr.replace(' ', 'T')).getTime();
+        const now = new Date().getTime();
+
+        if (routineTimestamp <= now) {
+          if (startDate < todayStr) {
+            setSectorDateError('La fecha ya pasó');
+          } else {
+            setSectorTimeError('La hora ya pasó');
+          }
+          hasError = true;
+        }
+      }
+    }
+
+    if (hasError) return;
 
     await handleCreateSector(e, { 
       defaultConfiguration: newSector.defaultConfiguration, 
@@ -246,8 +388,6 @@ export default function ConfigView({ appData }) {
     
     if (handleUpdateSector) {
       await handleUpdateSector(selectedTab, { name: editedSectorName });
-    } else {
-      console.warn("La función handleUpdateSector no está provista por appData.");
     }
     setIsEditingSectorName(false);
   };
@@ -256,9 +396,14 @@ export default function ConfigView({ appData }) {
     setLocalError('');
     setConfirmDeleteId(null); 
     setEditingRoutineId(routine.id);
+    
+    const fmt = formatDateTimeText(routine.startTime);
     setEditData({
-      startTime: formatTime(routine.startTime),
-      durationMinutes: routine.durationMinutes
+      startDate: fmt.rawDate || getTodayDateString(),
+      startTime: fmt.timeText,
+      durationMinutes: routine.durationMinutes,
+      errorDate: '',
+      errorTime: ''
     });
 
     isProgrammaticScroll.current = true;
@@ -280,20 +425,37 @@ export default function ConfigView({ appData }) {
   const saveEdit = async (e, originalRoutine) => {
     e.preventDefault();
     setLocalError('');
+    setEditData(prev => ({ ...prev, errorDate: '', errorTime: '' }));
 
-    const timeToSave = editData.startTime;
-    const isDuplicate = sectorConfigs.some(
-      c => c.id !== originalRoutine.id && formatTime(c.startTime) === timeToSave
-    );
+    const timeToSaveStr = combineDateTime(editData.startDate, editData.startTime);
+    const timeToSaveIso = timeToSaveStr.replace(' ', 'T');
+    const editTimestamp = new Date(timeToSaveIso).getTime();
+    const now = new Date().getTime();
+    const todayStr = getTodayDateString();
+
+    if (editTimestamp <= now) {
+      if (editData.startDate < todayStr) {
+        setEditData(prev => ({ ...prev, errorDate: 'La fecha ya pasó' }));
+      } else {
+        setEditData(prev => ({ ...prev, errorTime: 'La hora ya pasó' }));
+      }
+      return;
+    }
+
+    const isDuplicate = sectorConfigs.some(c => {
+      if (c.id === originalRoutine.id) return false;
+      const existingTimeIso = typeof c.startTime === 'string' ? c.startTime.replace(' ', 'T') : '';
+      return new Date(existingTimeIso).getTime() === editTimestamp;
+    });
 
     if (isDuplicate) {
-      setLocalError(`Ya existe otra rutina a las ${timeToSave}.`);
+      setEditData(prev => ({ ...prev, errorTime: 'Ya existe otra rutina a esta hora' }));
       return;
     }
 
     await handleUpdateRoutine(originalRoutine.id, {
       ...originalRoutine,
-      startTime: editData.startTime,
+      startTime: timeToSaveStr,
       durationMinutes: Number(editData.durationMinutes)
     });
 
@@ -304,7 +466,6 @@ export default function ConfigView({ appData }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '120px' }}>
       
       <style>{`
-        /* NUEVO: REGLA MAESTRA DE CAJA PARA EVITAR CORTES EN FORMULARIOS */
         *, *::before, *::after {
           box-sizing: border-box;
         }
@@ -512,12 +673,55 @@ export default function ConfigView({ appData }) {
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        /* SCROLL ORGÁNICO: Sin límites de altura */
         .routines-scroll-area {
           display: flex;
           flex-direction: column;
           gap: 10px;
           padding: 2px 0px;
+          max-height: 320px; 
+          overflow-y: auto;
+          overscroll-behavior-y: contain;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+        .routines-scroll-area::-webkit-scrollbar {
+          display: none;
+        }
+
+        .scroll-shadow-overlay {
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 32px;
+          pointer-events: none;
+          z-index: 10;
+          transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+          opacity: 0;
+        }
+        .scroll-shadow-overlay.top {
+          top: 0;
+          background: linear-gradient(to bottom, #0f172a 20%, transparent);
+        }
+        .scroll-shadow-overlay.bottom {
+          bottom: 0;
+          background: linear-gradient(to top, #0f172a 20%, transparent);
+        }
+        .scroll-shadow-overlay.visible {
+          opacity: 1;
+        }
+
+        .empty-state-enter {
+          animation: smoothEmptyEnter 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          min-height: 120px;
+        }
+        @keyframes smoothEmptyEnter {
+          0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
         }
 
         .accordion-wrapper {
@@ -573,7 +777,7 @@ export default function ConfigView({ appData }) {
           pointer-events: none;
         }
         @keyframes smoothCollapseOut {
-          0% { opacity: 1; max-height: 150px; margin-bottom: 10px; transform: scale(1); }
+          0% { opacity: 1; max-height: 350px; margin-bottom: 10px; transform: scale(1); }
           40% { opacity: 0; transform: scale(0.95); }
           100% { opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border: none; transform: scale(0.9); }
         }
@@ -595,16 +799,15 @@ export default function ConfigView({ appData }) {
 
         @keyframes slideIn {
           0% { opacity: 0; max-height: 0; margin-bottom: 0; transform: translateY(-10px) scaleY(0.8); }
-          100% { opacity: 1; max-height: 140px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
+          100% { opacity: 1; max-height: 350px; margin-bottom: 12px; transform: translateY(0) scaleY(1); }
         }
         
         @keyframes smoothRowDelete {
-          0% { opacity: 1; max-height: 100px; margin-bottom: 8px; transform: scale(1); }
+          0% { opacity: 1; max-height: 350px; margin-bottom: 8px; transform: scale(1); }
           35% { opacity: 0; transform: scale(0.95) translateY(-2px); }
           100% { opacity: 0; max-height: 0; margin-bottom: 0; transform: scale(0.9) translateY(-8px); }
         }
         
-        /* ESTILO PARA EL INPUT EDITABLE EN LÍNEA (CORREGIDO PARA NO SALTAR) */
         .inline-edit-input {
           width: 100%;
           font-size: 1.4rem;
@@ -614,9 +817,9 @@ export default function ConfigView({ appData }) {
           background: rgba(0,0,0,0.15);
           border: 1px solid var(--primary);
           border-radius: 8px;
-          padding: 2px 8px; /* Reducido para no estirar la tarjeta */
-          margin: 0; /* Eliminado el margin-bottom que empujaba la tarjeta */
-          height: 32px; /* Altura forzada similar al texto original */
+          padding: 2px 8px; 
+          margin: 0; 
+          height: 32px; 
           outline: none;
           box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
           transition: all 0.2s ease;
@@ -707,10 +910,8 @@ export default function ConfigView({ appData }) {
         <div key={selectedTab} className="sector-content-transition">
           
           <div style={{ position: 'relative' }}>
-            {/* === BARRA DE HERRAMIENTAS DEL SECTOR === */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px', paddingRight: '4px', gap: '8px' }}>
               
-              {/* BOTÓN DE BORRAR SECTOR (Animado) */}
               <button 
                 type="button"
                 onClick={(e) => {
@@ -765,12 +966,10 @@ export default function ConfigView({ appData }) {
                 title={isEditingSectorName ? "Guardar nombre" : "Editar nombre"}
               >
                 {isEditingSectorName ? (
-                  /* ICONO GUARDAR - Reducido a 14px para que coincida exactamente con el de editar */
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
                 ) : (
-                  /* ICONO EDITAR (14px) */
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
@@ -879,84 +1078,150 @@ export default function ConfigView({ appData }) {
               )}
             </div>
             
-            <div className="glass-panel" style={{ padding: '16px' }}>
+            <div className="glass-panel" style={{ padding: '16px', position: 'relative', minHeight: '150px', display: 'flex', flexDirection: 'column' }}>
               {sortedConfigs.length === 0 ? (
-                <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', padding: '20px 10px' }}>No tienes ninguna rutina programada.</p>
+                <div className="empty-state-enter">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', opacity: 0.5, marginBottom: '12px' }}>
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  <p className="text-muted" style={{ fontSize: '0.95rem', textAlign: 'center', margin: 0 }}>
+                    No tienes ninguna rutina programada.
+                  </p>
+                </div>
               ) : (
-                <div className="routines-scroll-area">
-                  {sortedConfigs.map((c) => {
-                    const isEditing = editingRoutineId === c.id;
-                    const isDeleting = deletingIds.includes(c.id);
-                    
-                    return (
-                      <div 
-                        key={c.id} 
-                        ref={el => routineRefs.current[c.id] = el}
-                        className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
-                        style={{ 
-                          background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
-                          opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
-                          transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer', flexShrink: 0
-                        }}
-                        onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                              {formatTime(c.startTime)}
-                            </h4>
-                            <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4 }}>
-                              {c.durationMinutes} minutos
-                            </p>
-                          </div>
-                          
-                          {isEditing ? (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
-                          ) : (
-                            <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
-                              <span className="switch-toggle__thumb" />
-                            </button>
-                          )}
-                        </div>
+                <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div className={`scroll-shadow-overlay top ${scrollShadowsRoutines.top ? 'visible' : ''}`} />
+                  
+                  <div 
+                    className="routines-scroll-area"
+                    ref={routinesScrollRef}
+                    onScroll={checkVerticalScrollRoutines}
+                  >
+                    {sortedConfigs.map((c) => {
+                      const isEditing = editingRoutineId === c.id;
+                      const isDeleting = deletingIds.includes(c.id);
+                      
+                      const fmt = formatDateTimeText(c.startTime);
+                      const isTodayOrTomorrow = fmt.dateText === 'Hoy' || fmt.dateText === 'Mañana';
 
-                        <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
-                          <div className="accordion-content">
-                            <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
-                              <div style={{ display: 'flex', gap: '12px' }}>
-                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} required /></div>
-                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Minutos</label><input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required /></div>
+                      return (
+                        <div 
+                          key={c.id} 
+                          ref={el => routineRefs.current[c.id] = el}
+                          className={`list-item-enter ${isEditing ? 'editing-card' : ''} ${isDeleting ? 'list-item-exit' : ''}`} 
+                          style={{ 
+                            background: isEditing ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px',
+                            opacity: c.enabled || isEditing ? 1 : 0.5, borderLeft: `4px solid ${c.enabled ? 'var(--primary)' : 'var(--text-muted)'}`,
+                            transition: 'all 0.3s ease', cursor: isEditing ? 'default' : 'pointer', flexShrink: 0
+                          }}
+                          onClick={() => { if (!isEditing && !isDeleting) startEditing(c); }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                <h4 style={{ fontSize: '1.45rem', fontWeight: '700', color: c.enabled ? 'var(--text-main)' : 'var(--text-muted)', margin: 0 }}>
+                                  {fmt.timeText}
+                                </h4>
+                                <span style={{ fontSize: '0.85rem', fontWeight: isTodayOrTomorrow ? '700' : '500', color: isTodayOrTomorrow && c.enabled ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                  {fmt.dateText}
+                                </span>
                               </div>
-                              
-                              {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
-                              
-                              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
-                                <button 
-                                  type="button" 
-                                  onClick={(e) => { 
-                                    e.stopPropagation();
-                                    if (confirmDeleteId === c.id) {
-                                      setDeletingIds(prev => [...prev, c.id]);
-                                      setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
-                                    } else {
-                                      setConfirmDeleteId(c.id);
-                                    }
-                                  }} 
-                                  style={{ 
-                                    flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
-                                    border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
-                                    background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
-                                  }}
-                                >
-                                  {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
-                                </button>
-                              </div>
-                            </form>
+                              <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '2px', opacity: c.enabled ? 1 : 0.4, margin: 0 }}>
+                                {c.durationMinutes} minutos
+                              </p>
+                            </div>
+                            
+                            {isEditing ? (
+                              <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditing(); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', padding: '8px', cursor: 'pointer' }}>✕</button>
+                            ) : (
+                              <button type="button" className={`switch-toggle ${c.enabled ? 'is-on' : 'is-off'}`} onClick={(e) => { e.stopPropagation(); handleToggleConfiguration(c); }}>
+                                <span className="switch-toggle__thumb" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className={`accordion-wrapper ${isEditing ? 'expanded' : ''}`}>
+                            <div className="accordion-content">
+                              <form onSubmit={(e) => saveEdit(e, c)} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
+                                
+                                <div className="input-group" style={{ marginBottom: 0 }}>
+                                  <label style={{ fontSize: '0.85rem' }}>Fecha programada</label>
+                                  <input 
+                                    type="date" 
+                                    value={editData.startDate} 
+                                    onChange={e => setEditData({...editData, startDate: e.target.value, errorDate: ''})} 
+                                    className={editData.errorDate ? 'input-error' : ''}
+                                    style={{ transition: 'all 0.3s ease' }}
+                                    required 
+                                  />
+                                  <div className={`error-message-wrapper ${editData.errorDate ? 'show' : ''}`}>
+                                    <div className="error-message-content">
+                                      <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>
+                                        {editData.errorDate}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.85rem' }}>Hora</label>
+                                    <input 
+                                      type="time" 
+                                      value={editData.startTime} 
+                                      onChange={e => setEditData({...editData, startTime: e.target.value, errorTime: ''})} 
+                                      className={editData.errorTime ? 'input-error' : ''}
+                                      style={{ transition: 'all 0.3s ease' }}
+                                      required 
+                                    />
+                                    <div className={`error-message-wrapper ${editData.errorTime ? 'show' : ''}`}>
+                                      <div className="error-message-content">
+                                        <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>
+                                          {editData.errorTime}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.85rem' }}>Minutos</label>
+                                    <input type="number" min="5" max="180" value={editData.durationMinutes} onChange={e => setEditData({...editData, durationMinutes: e.target.value})} required />
+                                  </div>
+                                </div>
+                                
+                                {localError && <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{localError}</div>}
+                                
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                  <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '0.95rem', margin: 0 }}>Guardar</button>
+                                  <button 
+                                    type="button" 
+                                    onClick={(e) => { 
+                                      e.stopPropagation();
+                                      if (confirmDeleteId === c.id) {
+                                        setDeletingIds(prev => [...prev, c.id]);
+                                        setTimeout(() => { handleDeleteConfiguration(c.id); }, 480);
+                                      } else {
+                                        setConfirmDeleteId(c.id);
+                                      }
+                                    }} 
+                                    style={{ 
+                                      flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: 'bold', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease',
+                                      border: confirmDeleteId === c.id ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                                      background: confirmDeleteId === c.id ? 'var(--danger)' : 'transparent', color: confirmDeleteId === c.id ? '#ffffff' : 'var(--danger)', margin: 0
+                                    }}
+                                  >
+                                    {confirmDeleteId === c.id ? '¿Seguro?' : 'Eliminar'}
+                                  </button>
+                                </div>
+                              </form>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  <div className={`scroll-shadow-overlay bottom ${scrollShadowsRoutines.bottom ? 'visible' : ''}`} />
                 </div>
               )}
             </div>
@@ -987,64 +1252,72 @@ export default function ConfigView({ appData }) {
                 {routineList.map((routine, index) => {
                   const isRemoving = removingRowIds.includes(routine.id);
                   return (
-                    <div key={routine.id} className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`}>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                        
-                        <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                          {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Hora</label>}
-                          <input 
-                            type="time" value={routine.startTime} 
-                            onChange={e => handleChangeRoutineRow(routine.id, 'startTime', e.target.value)} 
-                            className={routine.errorTime ? 'input-error' : ''}
-                            style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
-                          />
-                        </div>
-                        
-                        <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                          {index === 0 && <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Min</label>}
-                          <input 
-                            type="number" min="5" max="180" value={routine.durationMinutes} 
-                            onChange={e => handleChangeRoutineRow(routine.id, 'durationMinutes', e.target.value)} 
-                            className={routine.errorDuration ? 'input-error' : ''}
-                            style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
-                          />
-                        </div>
-
+                    <div key={routine.id} className={`animated-row ${isRemoving ? 'row-exit' : 'row-enter'}`} style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Configuración {index + 1}</span>
                         {routineList.length > 1 && (
                           <button 
                             type="button" 
                             onClick={() => handleRemoveRoutineRow(routine.id)}
-                            style={{ height: '42px', width: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease', flexShrink: 0 }}
-                            title="Eliminar fila"
-                          >
-                            ✕
-                          </button>
+                            style={{ background: 'transparent', color: 'var(--text-muted)', border: 'none', cursor: 'pointer', padding: '4px' }}
+                            title="Quitar"
+                          >✕</button>
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <div style={{ flex: 1 }}>
+                      <div className="input-group" style={{ marginBottom: '12px' }}>
+                        <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Fecha de inicio</label>
+                        <input 
+                          type="date" 
+                          value={routine.startDate} 
+                          onChange={e => handleChangeRoutineRow(routine.id, 'startDate', e.target.value)} 
+                          className={routine.errorDate ? 'input-error' : ''}
+                          style={{ transition: 'all 0.3s ease' }}
+                          required
+                        />
+                        <div className={`error-message-wrapper ${routine.errorDate ? 'show' : ''}`}>
+                          <div className="error-message-content">
+                            <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>{routine.errorDate}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                        <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Hora</label>
+                          <input 
+                            type="time" 
+                            value={routine.startTime} 
+                            onChange={e => handleChangeRoutineRow(routine.id, 'startTime', e.target.value)} 
+                            className={routine.errorTime ? 'input-error' : ''}
+                            style={{ transition: 'all 0.3s ease' }}
+                            required
+                          />
                           <div className={`error-message-wrapper ${routine.errorTime ? 'show' : ''}`}>
                             <div className="error-message-content">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
-                                <span>{routine.errorTime}</span>
-                              </div>
+                              <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>{routine.errorTime}</span>
                             </div>
                           </div>
                         </div>
-
-                        <div style={{ flex: 1 }}>
+                        
+                        <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.8rem', marginBottom: '4px' }}>Min</label>
+                          <input 
+                            type="number" min="5" max="180" 
+                            value={routine.durationMinutes} 
+                            onChange={e => handleChangeRoutineRow(routine.id, 'durationMinutes', e.target.value)} 
+                            className={routine.errorDuration ? 'input-error' : ''}
+                            style={{ transition: 'border-color 0.2s ease, background 0.2s ease' }}
+                          />
                           <div className={`error-message-wrapper ${routine.errorDuration ? 'show' : ''}`}>
                             <div className="error-message-content">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600' }}>
-                                <span>{routine.errorDuration}</span>
-                              </div>
+                              <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>{routine.errorDuration}</span>
                             </div>
                           </div>
                         </div>
-
-                        {routineList.length > 1 && <div style={{ width: '42px', flexShrink: 0 }} />}
                       </div>
+
                     </div>
                   );
                 })}
@@ -1073,7 +1346,7 @@ export default function ConfigView({ appData }) {
                   setNewSector({...newSector, name: e.target.value});
                   if (sectorNameError) setSectorNameError('');
                 }} 
-                placeholder="Ej. Patio trasero" 
+                placeholder="Ej. Patio" 
                 className={sectorNameError ? 'input-error' : ''}
               />
               <div className={`error-message-wrapper ${sectorNameError ? 'show' : ''}`}>
@@ -1094,9 +1367,49 @@ export default function ConfigView({ appData }) {
             
             <div className={`accordion-wrapper ${newSector.defaultConfiguration ? 'expanded' : ''}`}>
               <div className="accordion-content">
-                <div style={{ display: 'flex', gap: '12px', paddingTop: '16px' }}>
-                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Hora</label><input type="time" value={newConfiguration.startTime} onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} required={newSector.defaultConfiguration} /></div>
-                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '16px' }}>
+                  
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label style={{ fontSize: '0.85rem' }}>Fecha programada</label>
+                    <input 
+                      type="date" 
+                      value={newConfiguration.startDate || getTodayDateString()} 
+                      onChange={e => setNewConfiguration({...newConfiguration, startDate: e.target.value})} 
+                      className={sectorDateError ? 'input-error' : ''}
+                      style={{ transition: 'all 0.3s ease' }}
+                      required={newSector.defaultConfiguration} 
+                    />
+                    <div className={`error-message-wrapper ${sectorDateError ? 'show' : ''}`}>
+                      <div className="error-message-content">
+                        <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>
+                          {sectorDateError}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.85rem' }}>Hora</label>
+                      <input 
+                        type="time" 
+                        value={newConfiguration.startTime} 
+                        onChange={e => setNewConfiguration({...newConfiguration, startTime: e.target.value})} 
+                        className={sectorTimeError ? 'input-error' : ''}
+                        style={{ transition: 'all 0.3s ease' }}
+                        required={newSector.defaultConfiguration} 
+                      />
+                      <div className={`error-message-wrapper ${sectorTimeError ? 'show' : ''}`}>
+                        <div className="error-message-content">
+                          <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', fontWeight: '600', display: 'block' }}>
+                            {sectorTimeError}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="input-group" style={{ flex: 1, marginBottom: 0 }}><label style={{ fontSize: '0.85rem' }}>Min</label><input type="number" min="5" value={newConfiguration.durationMinutes} onChange={e => setNewConfiguration({...newConfiguration, durationMinutes: e.target.value})} required={newSector.defaultConfiguration} /></div>
+                  </div>
+
                 </div>
               </div>
             </div>

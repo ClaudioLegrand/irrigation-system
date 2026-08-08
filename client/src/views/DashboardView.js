@@ -6,7 +6,6 @@ const { isActive, handleToggleMain, sectors = [], configurations = [], history =
 // 1. ESTADO DE LOS SECTORES Y HARDWARE
 const enabledSectors = sectors.filter(s => s.enabled !== false);
 
-// Función robusta para verificar si un sector está físicamente prendido
 const checkIsActive = (sector) => {
     if (!sector) return false;
     const st = sector.current_state || sector.currentState || sector.status || sector.state || sector.estado || sector.activo || sector.running;
@@ -15,8 +14,6 @@ const checkIsActive = (sector) => {
 
 const activeSectors = sectors.filter(checkIsActive);
 const activeCount = activeSectors.length;
-
-// El sistema está regando si el usuario apretó el botón O si el hardware confirma sectores prendidos
 const systemIsWatering = isActive || activeCount > 0;
 
 // 2. MOTOR CRONOLÓGICO: CALCULAR EL PRÓXIMO RIEGO EXACTO
@@ -76,21 +73,21 @@ useEffect(() => {
     let items = [];
     if (systemIsWatering) {
     if (activeCount === 0) {
-        items = [{ id: 'wait', left: 'Conectando válvulas...', right: '' }];
+        items = [{ id: 'wait', sectorId: null, left: 'Conectando válvulas...', right: '' }];
     } else {
         items = activeSectors.map(s => ({
         id: s.id,
+        sectorId: s.id, // NUEVO: Guardamos el ID real para la navegación
         left: s.name,
         right: 'En curso'
         }));
     }
     } else {
     if (nextEvents.length === 0) {
-        // LÓGICA INTELIGENTE: Diferenciar entre sistema pausado y falta de rutinas
         if (enabledSectors.length === 0) {
-        items = [{ id: 'none', left: 'Sectores en pausa', right: '' }];
+        items = [{ id: 'none', sectorId: null, left: 'Sectores en pausa', right: '' }];
         } else {
-        items = [{ id: 'none', left: 'Sin rutinas programadas', right: '' }];
+        items = [{ id: 'none', sectorId: null, left: 'Sin rutinas programadas', right: '' }];
         }
     } else {
         const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
@@ -99,6 +96,7 @@ useEffect(() => {
 
         items = nextEvents.map((e, idx) => ({
         id: `next-${idx}`,
+        sectorId: e.sectorId, // NUEVO: Guardamos el ID de la rutina
         left: e.sectorName,
         right: `${dayStr}, ${e.timeStr} hs`
         }));
@@ -129,9 +127,9 @@ if (systemIsWatering) {
     else heroSubtext = `${enabledSectors.length} zonas listas`;
 }
 
+// 5. HISTORIAL Y "UI OPTIMISTA"
 const getLatestHistory = () => {
     if (!history || history.length === 0) return null;
-
     const parseToTimestamp = (val) => {
     if (!val) return 0;
     if (typeof val === 'number') return val < 100000000000 ? val * 1000 : val;
@@ -142,13 +140,11 @@ const getLatestHistory = () => {
     }
     return 0;
     };
-
     const sortedHistory = [...history].filter(item => item !== null && typeof item === 'object').sort((a, b) => {
     const tA = parseToTimestamp(a.start_date_time || a.startDateTime || a.startTime || a.start_time || a.timestamp || a.created_at || a.createdAt);
     const tB = parseToTimestamp(b.start_date_time || b.startDateTime || b.startTime || b.start_time || b.timestamp || b.created_at || b.createdAt);
     return tB - tA;
     });
-
     return sortedHistory.length > 0 ? sortedHistory[0] : null;
 };
 
@@ -170,7 +166,6 @@ const getHistorySectorName = (item) => {
     return s ? s.name : 'Sector';
 };
 
-// NUEVO: Formateador inteligente de fechas ("Hoy", "Ayer", etc.)
 const formatEventTime = (item) => {
     if (!item) return '';
     const isEnd = !!(item.endDateTime || item.end_date_time);
@@ -187,17 +182,14 @@ const formatEventTime = (item) => {
     yesterday.setDate(yesterday.getDate() - 1);
     
     const eventDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
     const h = String(d.getHours()).padStart(2, '0');
     const m = String(d.getMinutes()).padStart(2, '0');
     const timeStr = `${h}:${m} hs`;
 
     let dayStr = '';
-    if (eventDate.getTime() === today.getTime()) {
-    dayStr = 'Hoy';
-    } else if (eventDate.getTime() === yesterday.getTime()) {
-    dayStr = 'Ayer';
-    } else {
+    if (eventDate.getTime() === today.getTime()) dayStr = 'Hoy';
+    else if (eventDate.getTime() === yesterday.getTime()) dayStr = 'Ayer';
+    else {
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     dayStr = `${day}/${month}/${d.getFullYear()}`;
@@ -205,6 +197,68 @@ const formatEventTime = (item) => {
 
     const verb = isEnd ? 'Finalizó' : 'Inició';
     return `${verb}: ${dayStr}, ${timeStr}`;
+};
+
+// LÓGICA DE UI OPTIMISTA PARA EL ÚLTIMO EVENTO (AHORA BIDIRECCIONAL)
+let displayFinished = false;
+let displayTimeText = '';
+let displayOrigin = '';
+let displaySectorName = '';
+let hasActivity = false;
+
+if (systemIsWatering && activeCount > 0) {
+    // CASO 1: EL SISTEMA ACABA DE ENCENDERSE
+    const isDbHistoryFinished = lastHistory && (lastHistory.endDateTime || lastHistory.end_date_time);
+    
+    hasActivity = true;
+    displayFinished = false;
+
+    if (!lastHistory || isDbHistoryFinished) {
+    // LAG DE ENCENDIDO: La BD aún manda un evento viejo/terminado. Inventamos el nuevo al instante.
+    displaySectorName = activeSectors[0].name;
+    displayOrigin = 'Manual';
+    
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    displayTimeText = `Inició: Hoy, ${h}:${m} hs`;
+    } else {
+    // NORMAL: Ya llegó el evento real de la BD
+    displaySectorName = getHistorySectorName(lastHistory);
+    displayOrigin = getHistoryOrigin(lastHistory);
+    displayTimeText = formatEventTime(lastHistory);
+    }
+} else if (lastHistory) {
+    // CASO 2: EL SISTEMA ESTÁ APAGADO (Y tenemos historial)
+    hasActivity = true;
+    const isActuallyFinished = lastHistory.endDateTime || lastHistory.end_date_time;
+    
+    displaySectorName = getHistorySectorName(lastHistory);
+    displayOrigin = getHistoryOrigin(lastHistory);
+    
+    if (!isActuallyFinished && !systemIsWatering) {
+    // LAG DE APAGADO: La BD dice que sigue regando, pero sabemos que se apagó.
+    displayFinished = true;
+    displayTimeText = 'Finalizó: Completado';
+    } else {
+    // NORMAL: Todo sincronizado.
+    displayFinished = isActuallyFinished;
+    displayTimeText = formatEventTime(lastHistory);
+    }
+}
+
+// 6. FUNCIONES DE NAVEGACIÓN CONTEXTUAL
+const handleTickerClick = () => {
+    if (tickerItems.length === 0) return;
+    const currentItem = tickerItems[tickerIndex];
+    if (currentItem && currentItem.sectorId && appData.setLastSectorId) {
+    appData.setLastSectorId(currentItem.sectorId); // Memorizamos el sector
+    }
+    setCurrentView('config'); // Vamos a la vista de configuración
+};
+
+const handleLastEventClick = () => {
+    setCurrentView('history'); // Vamos directo al historial
 };
 
 return (
@@ -232,7 +286,6 @@ return (
         .ticker-slide.prev { opacity: 0; transform: translateY(-24px); }
         .ticker-slide.next { opacity: 0; transform: translateY(24px); }
 
-        /* TEXTOS CON PROTECCIÓN ANTI-DESBORDES Y ANTI-JANK */
         .ticker-left {
         font-size: 1.05rem;
         font-weight: 600;
@@ -255,6 +308,22 @@ return (
         width: 100%;
         padding: 0 10px;
         box-sizing: border-box;
+        }
+
+        /* NUEVO: ESTILOS DE PANELES INTERACTIVOS */
+        .interactive-panel {
+        cursor: pointer;
+        transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease !important;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        }
+        .interactive-panel:hover {
+        background: rgba(255, 255, 255, 0.05);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .interactive-panel:active {
+        transform: scale(0.97) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
         }
     `}</style>
 
@@ -299,13 +368,24 @@ return (
 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-        {/* === 2. PANEL INTELIGENTE: PRÓXIMO RIEGO / EN PROCESO === */}
-        <div className="glass-panel" style={{ padding: '16px', minHeight: '84px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center', border: systemIsWatering ? '1px solid var(--primary)' : '1px solid var(--surface-border)', background: systemIsWatering ? 'rgba(16, 185, 129, 0.05)' : 'var(--surface)', transition: 'all 0.4s ease' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* === 2. PANEL INTELIGENTE: PRÓXIMO RIEGO / EN PROCESO (AHORA CLICKABLE) === */}
+        <div 
+        className="glass-panel interactive-panel" 
+        onClick={handleTickerClick}
+        style={{ padding: '16px', minHeight: '84px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center', border: systemIsWatering ? '1px solid var(--primary)' : '1px solid var(--surface-border)', background: systemIsWatering ? 'rgba(16, 185, 129, 0.05)' : 'var(--surface)', transition: 'all 0.4s ease' }}
+        >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {systemIsWatering ? <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 6px rgba(16,185,129,0.8)' }}></span> : null}
             <p className="eyebrow" style={{ color: systemIsWatering ? 'var(--primary)' : 'var(--accent)', margin: 0 }}>
-            {systemIsWatering ? 'En Proceso' : 'Próximo Riego'}
+                {systemIsWatering ? 'En Proceso' : 'Próximo Riego'}
             </p>
+            </div>
+            
+            {/* Pequeña flecha sutil para indicar que es clickeable */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+            <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
         </div>
 
         <div className="ticker-wrapper">
@@ -327,23 +407,32 @@ return (
         </div>
         </div>
 
-        {/* === 3. PANEL INTELIGENTE: ÚLTIMO EVENTO REDISEÑADO === */}
-        <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', minHeight: '106px', boxSizing: 'border-box' }}>
-        <p className="eyebrow" style={{ margin: 0 }}>Último Evento</p>
+        {/* === 3. PANEL INTELIGENTE: ÚLTIMO EVENTO (AHORA CLICKABLE Y OPTIMISTA) === */}
+        <div 
+        className="glass-panel interactive-panel" 
+        onClick={handleLastEventClick}
+        style={{ padding: '16px', display: 'flex', flexDirection: 'column', minHeight: '106px', boxSizing: 'border-box' }}
+        >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p className="eyebrow" style={{ margin: 0 }}>Último Evento</p>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+            <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        </div>
         
-        {lastHistory ? (
+        {hasActivity ? (
             <>
-            {/* FILA 1: Nombre y Estado */}
+            {/* FILA 1: Nombre y Estado (Aplica lógica optimista bidireccional) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '16px' }}>
                 <span style={{ fontSize: '1.05rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
-                {getHistorySectorName(lastHistory)}
+                {displaySectorName}
                 </span>
-                <span style={{ fontSize: '0.80rem', fontWeight: '800', color: lastHistory.endDateTime || lastHistory.end_date_time ? 'var(--text-muted)' : 'var(--primary)', flexShrink: 0, padding: '4px 10px', borderRadius: '12px', background: lastHistory.endDateTime || lastHistory.end_date_time ? 'rgba(255,255,255,0.06)' : 'rgba(16,185,129,0.12)' }}>
-                {lastHistory.endDateTime || lastHistory.end_date_time ? 'FINALIZADO' : 'EN CURSO'}
+                <span style={{ fontSize: '0.80rem', fontWeight: '800', color: displayFinished ? 'var(--text-muted)' : 'var(--primary)', flexShrink: 0, padding: '4px 10px', borderRadius: '12px', background: displayFinished ? 'rgba(255,255,255,0.06)' : 'rgba(16,185,129,0.12)' }}>
+                {displayFinished ? 'FINALIZADO' : 'EN CURSO'}
                 </span>
             </div>
 
-            {/* FILA 2 & 3: Fecha inteligente y Origen con Íconos */}
+            {/* FILA 2 & 3: Fecha inteligente y Origen */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -351,14 +440,14 @@ return (
                     <circle cx="12" cy="12" r="10"></circle>
                     <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
-                <span>{formatEventTime(lastHistory)}</span>
+                <span>{displayTimeText}</span>
                 </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
-                <span>Origen: <strong style={{ color: 'var(--text-main)' }}>{getHistoryOrigin(lastHistory)}</strong></span>
+                <span>Origen: <strong style={{ color: 'var(--text-main)' }}>{displayOrigin}</strong></span>
                 </div>
 
             </div>
